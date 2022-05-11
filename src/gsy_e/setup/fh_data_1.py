@@ -1,3 +1,12 @@
+from gsy_e.models.area import Area
+from gsy_e.models.strategy.storage import StorageStrategy
+from gsy_e.models.strategy.pv import PVStrategy
+from gsy_e.models.strategy.predefined_load import DefinedLoadStrategy
+from gsy_e.models.strategy.commercial_producer import CommercialStrategy
+from gsy_e.models.strategy.load_hours import LoadHoursStrategy
+from gsy_e.gsy_e_core.util import d3a_path
+import os
+
 def get_setup(config):
     area = Area(
         "Grid",
