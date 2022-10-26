@@ -228,7 +228,8 @@ class LoadHoursStrategy(BidEnabledStrategy):
         super().__init__()
         self._energy_params = LoadHoursPerDayEnergyParameters(
             avg_power_W, hrs_per_day, hrs_of_day)
-
+        self.is_consumer = True
+        self.is_producer = False
         self.balancing_energy_ratio = BalancingRatio(*balancing_energy_ratio)
         self.use_market_maker_rate = use_market_maker_rate
         self._init_price_update(fit_to_limit, energy_rate_increase_per_update, update_interval,

@@ -48,6 +48,8 @@ class InfiniteBusStrategy(CommercialStrategy, BidEnabledStrategy):
                  buying_rate_profile=None, buying_rate_profile_uuid=None,
                  energy_rate_profile_uuid=None):
         super().__init__()
+        self.is_consumer = True
+        self.is_producer = True
         self.energy_per_slot_kWh = INF_ENERGY
         self.energy_buy_rate = None
 

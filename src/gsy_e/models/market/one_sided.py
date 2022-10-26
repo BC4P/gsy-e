@@ -126,7 +126,7 @@ class OneSidedMarket(MarketBase):
                 "Negative price after taxes, offer cannot be posted.")
 
         if offer_id is None:
-            offer_id = self.bc_interface.create_new_offer(energy, price, seller)
+            offer_id = self.bc_interface.create_new_offer(energy, price, seller_id)
         offer = Offer(offer_id, self.now, price, energy, seller, original_price,
                       seller_origin=seller_origin, seller_origin_id=seller_origin_id,
                       seller_id=seller_id, attributes=attributes, requirements=requirements,

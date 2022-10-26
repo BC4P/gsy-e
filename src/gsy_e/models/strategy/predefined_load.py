@@ -143,6 +143,8 @@ class DefinedLoadStrategy(LoadHoursStrategy):
                          initial_buying_rate=initial_buying_rate,
                          balancing_energy_ratio=balancing_energy_ratio,
                          use_market_maker_rate=use_market_maker_rate)
+        self.is_consumer = True
+        self.is_producer = False
         self._energy_params = DefinedLoadEnergyParameters(
             daily_load_profile, daily_load_profile_uuid)
 

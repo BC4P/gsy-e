@@ -133,6 +133,8 @@ class PVStrategy(BidEnabledStrategy):
              capacity_kW: power rating of the predefined profiles
         """
         super().__init__()
+        self.is_consumer = False
+        self.is_producer = True
         self._energy_params = PVEnergyParameters(panel_count, capacity_kW)
         self.use_market_maker_rate = use_market_maker_rate
         self._init_price_update(update_interval, initial_selling_rate, final_selling_rate,
