@@ -36,7 +36,7 @@ def get_setup(config):
                          [
                              Area("Load 5 L9", strategy=LoadProfileExternalStrategy(
                                  daily_load_profile=os.path.join(current_dir,
-                                                                 "resources/CHR15 Multigenerational Home working couple, 2 children, 2   HH1.csv"),
+                                                                 "resources/CHR15 Multigenerational Home working couple, 2 children, 2 seniors HH1.csv"),
                                  initial_buying_rate=11,
                                  use_market_maker_rate=True),
                                   ),

@@ -145,7 +145,6 @@ class OneSidedMarket(MarketBase):
 
     def dispatch_market_offer_event(self, offer: Offer) -> None:
         """Dispatch the OFFER event to the listeners."""
-
         self._notify_listeners(MarketEvent.OFFER, offer=offer)
 
     @lock_market_action
@@ -314,7 +313,6 @@ class OneSidedMarket(MarketBase):
         self.offers.pop(offer.id, None)
         offer_bid_trade_info = self.fee_class.propagate_original_bid_info_on_offer_trade(
             trade_original_info=trade_bid_info)
-
         trade = Trade(trade_id, self.now, offer, offer.seller, buyer,
                       traded_energy=energy, trade_price=trade_price, residual=residual_offer,
                       offer_bid_trade_info=offer_bid_trade_info,
@@ -325,7 +323,8 @@ class OneSidedMarket(MarketBase):
                       matching_requirements=offer_bid_trade_info.matching_requirements
                       if offer_bid_trade_info else None
                       )
-
+                      
+        self.bc_interface.dispatch_offer(offer)
         self.bc_interface.track_trade_event(self.time_slot, trade)
 
         if already_tracked is False:

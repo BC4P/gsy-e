@@ -84,6 +84,13 @@ class BC4PBlockchainInterface:
     def cancel_offer(self, offer):
         pass
 
+    def dispatch_offer(self, offer):
+        print(offer)
+    
+    def handle_blockchain_trade_event(self, offer, buyer, original_offer, residual_offer):
+        return str(uuid.uuid4()), residual_offer
+        
+
     def change_offer(self, offer, original_offer, residual_offer):
         pass
 
@@ -91,6 +98,7 @@ class BC4PBlockchainInterface:
         return str(uuid.uuid4()), residual_offer
 
     def track_trade_event(self, time_slot, trade):
+        print(trade)
         pass
 
     def bc_listener(self):
