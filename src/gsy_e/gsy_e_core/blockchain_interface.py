@@ -24,6 +24,9 @@ class NonBlockchainInterface:
 
     def track_trade_event(self, time_slot, trade):
         pass
+    def dispatch_offer(self, offer):
+        pass
+
 
     def bc_listener(self):
         pass
@@ -75,17 +78,14 @@ class BC4PBlockchainInterface:
         import b4p
 
 
-        print(int(energy))
-        print(int(price))
-        print(seller)
-
         return str(uuid.uuid4())
 
     def cancel_offer(self, offer):
         pass
 
     def dispatch_offer(self, offer):
-        print(offer)
+        pass
+
     
     def handle_blockchain_trade_event(self, offer, buyer, original_offer, residual_offer):
         return str(uuid.uuid4()), residual_offer
@@ -98,6 +98,9 @@ class BC4PBlockchainInterface:
         return str(uuid.uuid4()), residual_offer
 
     def track_trade_event(self, time_slot, trade):
+        print(f"offer bid: {trade.seller_id} {trade.buyer_id}")
+        print(f"names: {trade.seller} {trade.buyer}")
+
         print(trade)
         pass
 
