@@ -26,6 +26,10 @@ from logging import getLogger
 from time import sleep, time, mktime
 from types import ModuleType
 from typing import Tuple, Optional, TYPE_CHECKING
+try:
+   import cPickle as pickle
+except:
+   import pickle
 
 import psutil
 from gsy_framework.constants_limits import ConstSettings, GlobalConfig
@@ -275,8 +279,18 @@ class SimulationSetup:
 
     def load_setup_module(self) -> "Area":
         """Load setup module and create areas that are described on the setup."""
-        loaded_python_module = self._import_setup_module(self.setup_module_name)
-        area = loaded_python_module.get_setup(self.config)
+        print('loading setup module',self.setup_module_name )
+        if self.setup_module_name.split('.')[-1] == 'pkl':
+            with open(self.setup_module_name, 'rb') as file:
+                try:
+                    area = pickle.load(file)
+                    area._config = self.config
+                except Exception as e:
+                    print('picled couldn\'t load the file: ',e)
+        else:
+            loaded_python_module = self._import_setup_module(self.setup_module_name)
+            area = loaded_python_module.get_setup(self.config)
+        print(area.get_state())
         self._log_traversal_length(area)
         return area
 
