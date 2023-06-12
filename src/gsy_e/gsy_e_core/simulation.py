@@ -501,7 +501,7 @@ class Simulation:
         self._simulation_id = redis_job_id
 
         self._init(redis_job_id)
-
+        print("simulation: sim")
         self._external_events = SimulationExternalEvents(
             redis_job_id, self._setup.config, self._status, self.progress_info, self.area)
 
@@ -879,6 +879,8 @@ def run_simulation(setup_module_name: str = "", simulation_config: SimulationCon
                    redis_job_id: str = None, saved_sim_state: dict = None,
                    slot_length_realtime: Duration = None, kwargs: dict = None) -> None:
     """Initiate simulation class and start simulation."""
+
+    shared_object = kwargs.pop("object_shared")
     # pylint: disable=too-many-arguments
     try:
         if saved_sim_state is None:
@@ -902,7 +904,7 @@ def run_simulation(setup_module_name: str = "", simulation_config: SimulationCon
     except SimulationException as ex:
         log.error(ex)
         return
-
+    shared_object["simulation"] = simulation
     if (saved_sim_state is not None and
             saved_sim_state["areas"] != {} and
             saved_sim_state["general"]["sim_status"] in ["running", "paused"]):
@@ -911,3 +913,4 @@ def run_simulation(setup_module_name: str = "", simulation_config: SimulationCon
         simulation.run(initial_slot=saved_sim_state["general"]["slot_number"])
     else:
         simulation.run()
+

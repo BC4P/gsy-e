@@ -712,7 +712,7 @@ class BaseStrategy(EventMixin, AreaBehaviorBase, ABC):
     def event_activate_price(self):
         """Configure strategy price parameters during the activate event."""
 
-
+from gsy_e.models.state import LoadState
 class BidEnabledStrategy(BaseStrategy):
     """
     Base strategy for all areas / assets that are eligible to post bids and interact with a
@@ -722,7 +722,13 @@ class BidEnabledStrategy(BaseStrategy):
         super().__init__()
         self._bids = {}
         self._traded_bids = {}
+        self._state = LoadState()
 
+
+    @property
+    def state(self):
+        return self._state
+    
     def energy_traded(self, market_id: str, time_slot: Optional[DateTime] = None) -> float:
         # pylint: disable=fixme
         # TODO: Potential bug when used for the storage strategy. Does not really make sense to

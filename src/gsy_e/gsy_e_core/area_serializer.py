@@ -111,7 +111,6 @@ def _instance_from_dict(description):
             raise ValueError(f"Unknown class {description['type']}") from exception
         raise exception
 
-
 def _leaf_from_dict(description, config):
     leaf_type = globals().get(description.pop("type"), type(None))
     if not issubclass(leaf_type, Leaf):

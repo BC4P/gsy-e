@@ -11,9 +11,9 @@ from gsy_e.models.strategy.external_strategies.pv import PVUserProfileExternalSt
 from gsy_e.models.strategy.external_strategies.load import LoadProfileExternalStrategy
 from gsy_e.models.strategy.external_strategies.storage import StorageExternalStrategy
 from gsy_e.models.strategy.load_hours import LoadHoursStrategy
-from gsy_e.models.strategy import BidEnabledStrategy
-current_dir = os.path.dirname(__file__)
+from gsy_e.models.strategy.pv import PVStrategy
 
+current_dir = os.path.dirname(__file__)
 print(current_dir)
 print(platform.python_implementation())
 
@@ -36,8 +36,18 @@ def get_setup(config):
                    
                     Area("Multigenerational house",
                          [
-                            Area("Load 5 L9", strategy=LoadHoursStrategy(avg_power_W=100)),
-                            Area("PV 5 (10kW)", strategy=BidEnabledStrategy())
+                            Area("Load 5 L9", strategy=LoadProfileExternalStrategy(
+                                 daily_load_profile=os.path.join(current_dir,
+                                                                 "resources/CHR15 Multigenerational Home working couple, 2 children, 2 seniors HH1.csv"),
+                                 initial_buying_rate=11,
+                                 use_market_maker_rate=True),
+                                  ),
+                            Area("PV 5 (10kW)", strategy=PVStrategy(4,
+                                                      initial_selling_rate=30,
+                                                      final_selling_rate=0,
+                                                      fit_to_limit=True,
+                                                      update_interval=1),
+                                  ),
 
                          ]),
 

@@ -42,9 +42,14 @@ log = logging.getLogger(__name__)
              context_settings={"max_content_width": 120})
 @click.option("-l", "--log-level", type=Choice(logging._nameToLevel.keys()), default="INFO",
               show_default=True, help="Log level")
-def main(log_level):
+@click.option("-o", "--sim_object", help="Sim Object")
+
+@click.pass_context
+def main(log_level,sim_object, *args, **kwargs):
     """Entrypoint for command-line interface interaction."""
     handler = logging.StreamHandler()
+    print(log_level)
+    print("args: ", args)
     handler.setLevel(log_level)
     handler.setFormatter(
         ColoredFormatter(
@@ -104,9 +109,20 @@ _setup_modules = available_simulation_scenarios
               help=(
                 "Enable or disable Degrees of Freedom "
                 "(orders can't contain attributes/requirements)."))
-def run(setup_module_name, settings_file, duration, slot_length, tick_length,
-        cloud_coverage, enable_external_connection, start_date,
-        pause_at, incremental, slot_length_realtime, enable_dof: bool, **kwargs):
+@click.pass_context
+
+def run(tick_length, slot_length, setup_module_name, enable_external_connection, 
+        slot_length_realtime,duration, cloud_coverage, settings_file, pause_at ,
+        incremental, repl, no_export,export_path,enable_bc,start_date,enable_dof, *args, **kwargs):  
+
+    execute(tick_length, slot_length, setup_module_name, enable_external_connection, 
+        slot_length_realtime,duration, cloud_coverage, settings_file, pause_at ,
+        incremental, repl, no_export,export_path,enable_bc,start_date,enable_dof, args, kwargs)
+    
+    
+def execute(tick_length, slot_length, setup_module_name, enable_external_connection, 
+        slot_length_realtime,duration, cloud_coverage, settings_file, pause_at ,
+        incremental,start_date,enable_dof, **kwargs):
     """Configure settings and run a simulation."""
     # Force the multiprocessing start method to be 'fork' on macOS.
     if platform.system() == "Darwin":
@@ -144,6 +160,8 @@ def run(setup_module_name, settings_file, duration, slot_length, tick_length,
         log.exception(ex)
         raise click.ClickException(ex.args[0])
 
+def run_from_outside(arguments, data=None, *args, **kwargs):
+    run(arguments, data=data)
 
 if __name__ == '__main__':
     run(['--setup', 'api_setup.default_community', '--slot-length-realtime', '10s', '--enable-external-connection'])

@@ -55,6 +55,7 @@ class RedisSimulationCommunication:
         self._simulation_status = simulation_status
         self._area = area
         self._progress_info = progress_info
+        print("sim_id: ", self._simulation_id)
         self._sub_callback_dict = {
             f"{gsy_e.constants.CONFIGURATION_ID}/area-map/": self._calculate_area_map_callback,
             f"{self._simulation_id}/stop": self._stop_callback,
@@ -64,6 +65,8 @@ class RedisSimulationCommunication:
             f"{self._simulation_id}/bulk-live-event":
                 self._bulk_live_event_callback,
         }
+
+        print("channgels: ", self._sub_callback_dict)
 
         try:
             self.redis_db = Redis.from_url(REDIS_URL, retry_on_timeout=True)

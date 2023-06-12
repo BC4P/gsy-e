@@ -107,6 +107,8 @@ regex==2022.7.9
 requests==2.28.1
     # via gsy-framework
 rq==1.10.1
+
+python-resources==0.3
     # via -r requirements/base.in
 six==1.16.0
     # via

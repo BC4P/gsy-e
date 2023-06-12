@@ -318,7 +318,7 @@ class LoadHoursStrategy(BidEnabledStrategy):
         self.bid_update.update_and_populate_price_settings(self.area)
         if ConstSettings.MASettings.MARKET_TYPE == SpotMarketTypeEnum.ONE_SIDED.value:
             self.bid_update.reset(self)
-        self._post_first_bid()
+        #self._post_first_bid()
         self._settlement_market_strategy.event_market_cycle(self)
         self._future_market_strategy.event_market_cycle(self)
 

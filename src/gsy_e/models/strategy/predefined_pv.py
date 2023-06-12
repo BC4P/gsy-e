@@ -244,7 +244,7 @@ class PVUserProfileStrategy(PVStrategy):
             fit_to_limit: bool = True,
             update_interval=duration(
                 minutes=ConstSettings.GeneralSettings.DEFAULT_UPDATE_INTERVAL),
-            energy_rate_decrease_per_update=None,
+            energy_rate_decrease_per_update=None,   
             use_market_maker_rate: bool = False,
             power_profile_uuid: str = None):
         """

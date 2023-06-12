@@ -377,6 +377,8 @@ class LoadExternalMixin(ExternalMixin):
 class LoadHoursExternalStrategy(LoadExternalMixin, LoadHoursStrategy):
     """Concrete LoadHoursStrategy class with external connection capabilities"""
 
+# class LoadEmptyExternalStrategy(LoadExternalMixin, BidEn)
+
 
 class LoadProfileExternalStrategy(LoadExternalMixin, DefinedLoadStrategy):
     """Concrete DefinedLoadStrategy class with external connection capabilities"""
