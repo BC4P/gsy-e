@@ -143,11 +143,21 @@ class MarketRedisEventSubscriber:
         self.futures.append(self.executor.submit(thread_cb))
 
     def _accept_offer_impl(self, arguments):
+        
+        print("ARGUMENTS!", arguments)
+
+
+
+        if('offer_or_id' in arguments.keys()):
+            print("SELLER",(arguments['offer_or_id']).seller)
+            
         transaction_uuid = arguments.pop("transaction_uuid", None)
         try:
             trade = self.market.accept_offer(**arguments)
+            print("TRADE!",trade, type(trade))
+
             self.publish(self._accept_offer_response_channel,
-                         {"status": "ready", "trade": trade.to_json_string(),
+                         {"status": "ready", "trade":  arguments, #trade.to_json_string(),
                           "transaction_uuid": transaction_uuid})
         except Exception as e:
             logging.error(f"Error when handling accept_offer on market {self.market.name}: "

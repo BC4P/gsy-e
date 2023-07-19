@@ -22,44 +22,20 @@ from gsy_framework.constants_limits import GlobalConfig
 from gsy_e.models.strategy.smart_meter import SmartMeterStrategy
 from gsy_e.models.strategy.predefined_load import DefinedLoadStrategy
 from gsy_e.utils.csv_to_dict import CsvToDict
-from gsy_e.gsy_e_core.device_registry import DeviceRegistry
 
 from gsy_e.gsy_e_core.util import d3a_path
 import os
 
-device_registry = ["B04", 
-"B05a",
-"B06", 
-"B08", 
-"B09", 
-"B10", 
-"B11", 
-"B13", 
-"B15", 
-"B17", 
-"B21", 
-"B22", 
-"B23", 
-"B28", 
-"B31", 
-"B34", 
-"B36", 
-"B41", 
-"B42", 
-"B52", 
-"B529", 
-"Market Maker", 
-'Liege']
-
+from gsy_framework.constants_limits import ConstSettings
 
 
 def get_setup(config):
 
+    ConstSettings.GeneralSettings.EVENT_DISPATCHING_VIA_REDIS = True
+
     #day = "2022-04-09"
     #day = "2022-06-21"
     day = "2022-09-15"
-
-    DeviceRegistry.REGISTRY_L = device_registry
 
     area = Area(
         "Grid",

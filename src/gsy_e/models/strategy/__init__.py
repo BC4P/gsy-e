@@ -161,11 +161,18 @@ class MarketStrategyConnectionRedisAdapter:
         self._send_events_to_market("ACCEPT_OFFER", market_id, offer_parameters.to_dict(),
                                     self._redis_accept_offer_response)
         trade = self._trade_buffer
+        print('TRADE!',trade)
         self._trade_buffer = None
         assert trade is not None
         return trade
 
     def _redis_accept_offer_response(self, payload: dict):
+        #print('PAYLOAD',payload)
+
+        #if('offer_or_id' in payload.keys()):
+        #    if(isinstance(payload['offer_or_id'],  Offer)):
+        #        payload['offer_or_id'] = payload['offer_or_id'].to_json_string()
+
         data = json.loads(payload["data"])
         if data["status"] == "ready":
             self._trade_buffer = Trade.from_json(data["trade"])
@@ -188,9 +195,24 @@ class MarketStrategyConnectionRedisAdapter:
             market_id = market_id.id
         response_channel = f"{market_id}/{event_type_str}/RESPONSE"
         market_channel = f"{market_id}/{event_type_str}"
+        print("DATA", data)
+
+        #if 'offer_or_id' in data.keys():
+        #    original_offer = data['offer_or_id']
+            
+        #    offer= json.loads(original_offer)
+        #    data["time_slot"] =  offer["time_slot"]
+
+        #{'offer_or_id': '{"id": "0ec12921-479a-4876-9203-03825544ead9", "creation_time": "2022-07-01T00:07:00", "time_slot": "2022-07-01T00:00:00", "original_price": 240.0, "price": 240.0, "energy": 16.0, "attributes": null, "requirements": null, "type": "Offer", "seller": "B05a", "seller_origin": "B05a", "seller_origin_id": "f03d280d-32da-4734-a843-d40e29906faa", "seller_id": "f03d280d-32da-4734-a843-d40e29906faa", "energy_rate": 15.0}', 'buyer': 'B36', 'energy': 16.0, 'trade_rate': None, 'already_tracked': False, 'trade_bid_info': None, 'buyer_origin': 'B36', 'buyer_origin_id': '47e1f6b7-105e-4985-a921-7bf5c8bc5f33', 'buyer_id': '47e1f6b7-105e-4985-a921-7bf5c8bc5f33'}
+
 
         data["transaction_uuid"] = str(uuid4())
-        data["time_slot"] = data["time_slot"].format(DATE_TIME_FORMAT)
+        #if ('offer_or_id' in data.keys()):
+        #    data["offer_or_id"] = json.loads(data["offer_or_id"])
+            
+        if('offer_or_id' in data.keys())==False:              
+            data["time_slot"] =  data["time_slot"].format(DATE_TIME_FORMAT)
+
         self.redis.sub_to_channel(response_channel, callback)
         self.redis.publish(market_channel, json.dumps(data))
 
@@ -200,8 +222,10 @@ class MarketStrategyConnectionRedisAdapter:
         self.redis.poll_until_response_received(event_response_was_received_callback)
 
         if data["transaction_uuid"] not in self._event_response_uuids:
+          
             logging.error("Transaction ID not found after %s seconds: %s",
                           REDIS_PUBLISH_RESPONSE_TIMEOUT, data)
+            logging.error("Length of IDS %d", len(self._event_response_uuids))
         else:
             self._event_response_uuids.remove(data["transaction_uuid"])
 
