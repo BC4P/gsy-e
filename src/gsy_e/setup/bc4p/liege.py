@@ -23,6 +23,8 @@ from gsy_e.models.strategy.smart_meter import SmartMeterStrategy
 from gsy_e.models.strategy.predefined_load import DefinedLoadStrategy
 from gsy_e.utils.csv_to_dict import CsvToDict
 from gsy_e.gsy_e_core.device_registry import DeviceRegistry
+from gsy_e.gsy_e_core.area_serializer import area_to_string, collect_areas_info
+
 
 from gsy_e.gsy_e_core.util import d3a_path
 import os
@@ -59,7 +61,7 @@ def get_setup(config):
     #day = "2022-06-21"
     day = "2022-09-15"
 
-    DeviceRegistry.REGISTRY_L = device_registry
+    #DeviceRegistry.REGISTRY_L = device_registry
 
     area = Area(
         "Grid",
@@ -69,31 +71,32 @@ def get_setup(config):
                 [
                     Area("B04", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b04.csv"), multiplier=-1000.0))),
                     Area("B05a", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b05a.csv"), multiplier=-1000.0))),
-                    Area("B06", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b06.csv"), multiplier=-1000.0))),
-                    Area("B08", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b08.csv"), multiplier=-1000.0))),
-                    Area("B09", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b09.csv"), multiplier=-1000.0))),
-                    Area("B10", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b10.csv"), multiplier=-1000.0))),
-                    Area("B11", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b11.csv"), multiplier=-1000.0))),
-                    Area("B13", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b13.csv"), multiplier=-1000.0))),
-                    Area("B15", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b15.csv"), multiplier=-1000.0))),
-                    Area("B17", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b17.csv"), multiplier=-1000.0))),
-                    Area("B21", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b21.csv"), multiplier=-1000.0))),
-                    Area("B22", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b22.csv"), multiplier=-1000.0))),
-                    Area("B23", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b23.csv"), multiplier=-1000.0))),
-                    Area("B28", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b28.csv"), multiplier=-1000.0))),
-                    Area("B31", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b31.csv"), multiplier=-1000.0))),
-                    Area("B34", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b34.csv"), multiplier=-1000.0))),
-                    Area("B36", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b36.csv"), multiplier=-1000.0))),
-                    Area("B41", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b41.csv"), multiplier=-1000.0))),
-                    Area("B42", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b42.csv"), multiplier=-1000.0))),
-                    Area("B52", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b52.csv"), multiplier=-1000.0))),
-                    Area("B529", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b529.csv"), multiplier=-1000.0))),
+                    # Area("B06", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b06.csv"), multiplier=-1000.0))),
+                    # Area("B08", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b08.csv"), multiplier=-1000.0))),
+                    # Area("B09", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b09.csv"), multiplier=-1000.0))),
+                    # Area("B10", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b10.csv"), multiplier=-1000.0))),
+                    # Area("B11", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b11.csv"), multiplier=-1000.0))),
+                    # Area("B13", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b13.csv"), multiplier=-1000.0))),
+                    # Area("B15", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b15.csv"), multiplier=-1000.0))),
+                    # Area("B17", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b17.csv"), multiplier=-1000.0))),
+                    # Area("B21", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b21.csv"), multiplier=-1000.0))),
+                    # Area("B22", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b22.csv"), multiplier=-1000.0))),
+                    # Area("B23", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b23.csv"), multiplier=-1000.0))),
+                    # Area("B28", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b28.csv"), multiplier=-1000.0))),
+                    # Area("B31", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b31.csv"), multiplier=-1000.0))),
+                    # Area("B34", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b34.csv"), multiplier=-1000.0))),
+                    # Area("B36", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b36.csv"), multiplier=-1000.0))),
+                    # Area("B41", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b41.csv"), multiplier=-1000.0))),
+                    # Area("B42", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b42.csv"), multiplier=-1000.0))),
+                    # Area("B52", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b52.csv"), multiplier=-1000.0))),
+                    # Area("B529", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b529.csv"), multiplier=-1000.0))),
                 ]
             ),
             Area("Market Maker", strategy=InfiniteBusStrategy(energy_buy_rate=10, energy_sell_rate=30)),
         ],
         config=config,
     )
+    DeviceRegistry.REGISTRY_L = collect_areas_info(area_to_string(area))
     return area
 
 

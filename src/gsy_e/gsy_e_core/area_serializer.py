@@ -183,3 +183,17 @@ def are_all_areas_unique(area, set_of_areas=None):
         set_of_areas = are_all_areas_unique(child, set_of_areas)
 
     return set_of_areas
+
+
+def collect_areas_info(data):
+    data_serial = json.loads(data)
+    areas = []
+    def traverse(node):
+        if 'name' in node and 'uuid' in node:
+            areas.append({'name': node['name'], 'uuid': node['uuid']})
+
+        if 'children' in node:
+            for child in node['children']:
+                traverse(child)
+    traverse(data_serial)
+    return areas
