@@ -64,13 +64,13 @@ def get_setup(config):
     #DeviceRegistry.REGISTRY_L = device_registry
 
     area = Area(
-        "Grid",
+        "Grid", 
         [
             Area(
                 "Liege",
                 [
-                    Area("B04", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b04.csv"), multiplier=-1000.0))),
-                    Area("B05a", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b05a.csv"), multiplier=-1000.0))),
+                    Area("B04", uuid="asset1", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b04.csv"), multiplier=-1000.0))),
+                    Area("B05a",uuid="asset2", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b05a.csv"), multiplier=-1000.0))),
                     # Area("B06", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b06.csv"), multiplier=-1000.0))),
                     # Area("B08", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b08.csv"), multiplier=-1000.0))),
                     # Area("B09", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b09.csv"), multiplier=-1000.0))),
@@ -90,12 +90,15 @@ def get_setup(config):
                     # Area("B42", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b42.csv"), multiplier=-1000.0))),
                     # Area("B52", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b52.csv"), multiplier=-1000.0))),
                     # Area("B529", strategy=SmartMeterStrategy(smart_meter_profile=CsvToDict.convert(path=os.path.join(d3a_path,"resources","liege",day,"b529.csv"), multiplier=-1000.0))),
-                ]
+                ],
+                uuid="liege"
             ),
-            Area("Market Maker", strategy=InfiniteBusStrategy(energy_buy_rate=10, energy_sell_rate=30)),
+            Area("Market Maker",uuid="marketMaker", strategy=InfiniteBusStrategy(energy_buy_rate=10, energy_sell_rate=30)),
         ],
+        uuid="grid",
         config=config,
     )
+    print(collect_areas_info(area_to_string(area)))
     DeviceRegistry.REGISTRY_L = collect_areas_info(area_to_string(area))
     return area
 
