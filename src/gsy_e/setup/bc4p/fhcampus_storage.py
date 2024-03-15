@@ -21,13 +21,14 @@ from gsy_framework.constants_limits import ConstSettings
 from gsy_e.models.strategy.database import DatabaseLoadStrategy, DatabasePVStrategy
 from gsy_framework.database_connection.connection import InfluxConnection, PostgreSQLConnection
 from gsy_framework.database_connection.queries_fhac import QueryFHACAggregated, QueryFHACPV
-import gsy_e.constants
+from gsy_e.models.strategy.storage import StorageStrategy
 
 def get_setup(config):
-    #gsy_e.constants.RUN_IN_REALTIME = True
-    connection_psql = PostgreSQLConnection("postgresql_fhaachen.cfg")
+    # ConstSettings.GeneralSettings.RUN_IN_REALTIME = True
     connection_fhaachen = InfluxConnection("influx_fhaachen.cfg")
-    # ConstSettings.BalancingSettings.ENABLE_BALANCING_MARKET = True
+    connection_psql = PostgreSQLConnection("postgresql_fhaachen.cfg")
+    # ConstSettings.BalancingSettings.FLEXIBLE_LOADS_SUPPORT = False
+    ConstSettings.BalancingSettings.ENABLE_BALANCING_MARKET = True
 
     area = Area(
         "Grid",
@@ -35,11 +36,13 @@ def get_setup(config):
             Area(
                 "FH Campus",
                 [
-                    Area("FH General Load", strategy=DatabaseLoadStrategy(query = QueryFHACAggregated(connection_fhaachen, power_column="P_ges", tablename="Strom"))),
-                    Area("FH PV", strategy=DatabasePVStrategy(query = QueryFHACPV(postgresConnection=connection_psql, plant="FP-JUEL", tablename="eview"))),
+                    Area("FH Campus Load", strategy=DatabaseLoadStrategy(query = QueryFHACAggregated(connection_fhaachen, power_column="P_ges", tablename="Strom"), initial_buying_rate=20, final_buying_rate=40)),
+                    Area("FH PV", strategy=DatabasePVStrategy(query = QueryFHACPV(postgresConnection=connection_psql, plant="FP-JUEL", tablename="eview", multiplier=1.0), initial_selling_rate=30, final_selling_rate=10)),
+                    Area("Fh Campus Storage", strategy=StorageStrategy(battery_capacity_kWh=1000, max_abs_battery_power_kW=150, initial_soc=10, initial_buying_rate=11, final_buying_rate=19, initial_selling_rate=39, final_selling_rate=31)),
                 ]
             ),
-            Area("Market Maker", strategy=InfiniteBusStrategy(energy_buy_rate=10, energy_sell_rate=30)),
+            
+            # Area("Market Maker", strategy=InfiniteBusStrategy(energy_buy_rate=10, energy_sell_rate=40)),
         ],
         config=config
     )
@@ -47,4 +50,4 @@ def get_setup(config):
 
 
 # pip install -e .
-# gsy-e run --setup bc4p.fhcampus -s 15m --start-date 2023-05-30
+# gsy-e run --setup bc4p.fhcampus_storage -s 15m --start-date 2023-05-30

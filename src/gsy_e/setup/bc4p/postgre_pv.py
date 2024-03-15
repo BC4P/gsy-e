@@ -18,28 +18,24 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from gsy_e.models.area import Area
 from gsy_e.models.strategy.infinite_bus import InfiniteBusStrategy
 from gsy_framework.constants_limits import ConstSettings
-from gsy_e.models.strategy.database import DatabaseLoadStrategy, DatabasePVStrategy
-from gsy_framework.database_connection.connection import InfluxConnection, PostgreSQLConnection
-from gsy_framework.database_connection.queries_fhac import QueryFHACAggregated, QueryFHACPV
-import gsy_e.constants
+from gsy_framework.database_connection.connection import PostgreSQLConnection
+from gsy_framework.database_connection.queries_fhac import QueryFHACPV
+from gsy_e.models.strategy.database import DatabasePVStrategy
 
 def get_setup(config):
-    #gsy_e.constants.RUN_IN_REALTIME = True
     connection_psql = PostgreSQLConnection("postgresql_fhaachen.cfg")
-    connection_fhaachen = InfluxConnection("influx_fhaachen.cfg")
-    # ConstSettings.BalancingSettings.ENABLE_BALANCING_MARKET = True
 
     area = Area(
         "Grid",
         [
             Area(
-                "FH Campus",
+                "FHAC Campus PV",
                 [
-                    Area("FH General Load", strategy=DatabaseLoadStrategy(query = QueryFHACAggregated(connection_fhaachen, power_column="P_ges", tablename="Strom"))),
-                    Area("FH PV", strategy=DatabasePVStrategy(query = QueryFHACPV(postgresConnection=connection_psql, plant="FP-JUEL", tablename="eview"))),
+                    Area("FP-JUEL", strategy=DatabasePVStrategy(query = QueryFHACPV(postgresConnection=connection_psql, plant="FP-JUEL", tablename="eview"))),
                 ]
             ),
-            Area("Market Maker", strategy=InfiniteBusStrategy(energy_buy_rate=10, energy_sell_rate=30)),
+
+            Area("Market Maker", strategy=InfiniteBusStrategy(energy_buy_rate=20, energy_sell_rate=30)),
         ],
         config=config
     )
@@ -47,4 +43,4 @@ def get_setup(config):
 
 
 # pip install -e .
-# gsy-e run --setup bc4p.fhcampus -s 15m --start-date 2023-05-30
+# gsy-e run --setup bc4p.postgre_pv -s 15m --enable-external-connection --start-date 2022-08-14
