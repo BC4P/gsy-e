@@ -66,6 +66,8 @@ class AreaStats:
 
     def restore_state(self, saved_state: Dict) -> None:
         """Restoration of simulation from its last known state"""
+        if not saved_state.get("rate_stats_market"):
+            return
         self.rate_stats_market.update(
             convert_str_to_pendulum_in_dict(saved_state["rate_stats_market"]))
         self.exported_traded_energy_kwh.update(
@@ -127,7 +129,7 @@ class AreaStats:
         total volume of energy traded"""
         out_dict = copy(default_trade_stats_dict)
         trade_volumes = [trade.traded_energy for trade in self.current_market.trades]
-        trade_rates = [trade.trade_price/trade.traded_energy
+        trade_rates = [trade.trade_rate
                        for trade in self.current_market.trades]
         if len(trade_rates) > 0:
             out_dict["min_trade_rate"] = limit_float_precision(min(trade_rates))

@@ -1,11 +1,13 @@
 -r dev.in
 
-behave
+behavex
+pytest-xdist
 coverage
 deepdiff
 hypothesis==6.24.1
 isort
 parameterized
 pytest
+pytest-cov
 pytest-random-order
 requests-mock

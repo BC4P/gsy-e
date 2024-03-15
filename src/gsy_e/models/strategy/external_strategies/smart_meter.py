@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import json
 import logging
 from typing import TYPE_CHECKING, Callable, Dict, List
-
+from gsy_framework.utils import str_to_pendulum_datetime
 from gsy_e.models.market import MarketBase
 from gsy_e.models.strategy.external_strategies import (ExternalMixin,
                                                        ExternalStrategyConnectionManager,
@@ -29,7 +29,10 @@ if TYPE_CHECKING:
     from pendulum import DateTime
 
     from gsy_e.models.strategy import Offers
-    from gsy_e.models.strategy.smart_meter import SmartMeterEnergyParameters, SmartMeterState
+    from gsy_e.models.strategy.energy_parameters.smart_meter import (
+        SmartMeterEnergyParameters, SmartMeterState)
+
+logger = logging.getLogger(__name__)
 
 
 class SmartMeterExternalMixin(ExternalMixin):
@@ -37,7 +40,7 @@ class SmartMeterExternalMixin(ExternalMixin):
     Mixin for enabling an external api for the SmartMeter strategies.
     Should always be inherited together with a superclass of SmartMeterStrategy.
     """
-
+    # pylint: disable=broad-except
     # state
     state: "SmartMeterState"
     _delete_past_state: Callable
@@ -67,12 +70,12 @@ class SmartMeterExternalMixin(ExternalMixin):
         super().event_activate(**kwargs) # noqa
         self.redis.sub_to_multiple_channels({
             **super().channel_dict,
-            f"{self.channel_prefix}/offer": self.offer,
-            f"{self.channel_prefix}/delete_offer": self.delete_offer,
-            f"{self.channel_prefix}/list_offers": self.list_offers,
-            f"{self.channel_prefix}/bid": self.bid,
-            f"{self.channel_prefix}/delete_bid": self.delete_bid,
-            f"{self.channel_prefix}/list_bids": self.list_bids,
+            self.channel_names.offer: self.offer,
+            self.channel_names.delete_offer: self.delete_offer,
+            self.channel_names.list_offers: self.list_offers,
+            self.channel_names.bid: self.bid,
+            self.channel_names.delete_bid: self.delete_bid,
+            self.channel_names.list_bids: self.list_bids,
         })
 
     def event_market_cycle(self) -> None:
@@ -106,12 +109,10 @@ class SmartMeterExternalMixin(ExternalMixin):
         transaction_id = self._get_transaction_id(payload)
         required_args = {"price", "energy", "transaction_id"}
         allowed_args = required_args.union({"replace_existing",
-                                            "time_slot",
-                                            "attributes",
-                                            "requirements"})
-        offer_response_channel = f"{self.channel_prefix}/response/offer"
+                                            "time_slot"})
+        response_channel = self.channel_names.offer_response
         if not ExternalStrategyConnectionManager.check_for_connected_and_reply(
-                self.redis, offer_response_channel, self.connected):
+                self.redis, response_channel, self.connected):
             return
         try:
             arguments = json.loads(payload["data"])
@@ -120,9 +121,9 @@ class SmartMeterExternalMixin(ExternalMixin):
             # Check that every provided argument is allowed
             assert all(arg in allowed_args for arg in arguments.keys())
         except Exception: # noqa
-            logging.exception("Incorrect offer request. Payload %s.", payload)
+            logger.exception("Incorrect offer request. Payload %s.", payload)
             self.redis.publish_json(
-                offer_response_channel,
+                response_channel,
                 {"command": "offer",
                  "error": (
                      "Incorrect offer request. "
@@ -130,14 +131,14 @@ class SmartMeterExternalMixin(ExternalMixin):
                  "transaction_id": transaction_id})
         else:
             self.pending_requests.append(
-                IncomingRequest("offer", arguments, offer_response_channel))
+                IncomingRequest("offer", arguments, response_channel))
 
     def delete_offer(self, payload: Dict) -> None:
         """Callback for delete offer Redis endpoint."""
         transaction_id = self._get_transaction_id(payload)
-        delete_offer_response_channel = f"{self.channel_prefix}/response/delete_offer"
+        response_channel = self.channel_names.delete_offer_response
         if not ExternalStrategyConnectionManager.check_for_connected_and_reply(
-                self.redis, delete_offer_response_channel, self.connected):
+                self.redis, response_channel, self.connected):
             return
         try:
             arguments = json.loads(payload["data"])
@@ -146,38 +147,36 @@ class SmartMeterExternalMixin(ExternalMixin):
                     market.id, arguments["offer"]):
                 raise Exception("Offer_id is not associated with any posted offer.")
         except Exception: # noqa
-            logging.exception("Error when handling delete offer request. Payload %s", payload)
+            logger.exception("Error when handling delete offer request. Payload %s", payload)
             self.redis.publish_json(
-                delete_offer_response_channel,
+                response_channel,
                 {"command": "offer_delete",
                  "error": "Incorrect delete offer request. Available parameters: (offer).",
                  "transaction_id": transaction_id})
         else:
             self.pending_requests.append(
-                IncomingRequest("delete_offer", arguments, delete_offer_response_channel))
+                IncomingRequest("delete_offer", arguments, response_channel))
 
     def list_offers(self, payload: Dict) -> None:
         """Callback for list offers Redis endpoint."""
         assert self._get_transaction_id(payload)
-        list_offers_response_channel = f"{self.channel_prefix}/response/list_offers"
+        response_channel = self.channel_names.list_offers_response
         if not ExternalStrategyConnectionManager.check_for_connected_and_reply(
-                self.redis, list_offers_response_channel, self.connected):
+                self.redis, response_channel, self.connected):
             return
         arguments = json.loads(payload["data"])
         self.pending_requests.append(
-            IncomingRequest("list_offers", arguments, list_offers_response_channel))
+            IncomingRequest("list_offers", arguments, response_channel))
 
     def bid(self, payload: Dict) -> None:
         """Callback for bid Redis endpoint."""
         transaction_id = self._get_transaction_id(payload)
         required_args = {"price", "energy", "transaction_id"}
         allowed_args = required_args.union({"replace_existing",
-                                            "time_slot",
-                                            "attributes",
-                                            "requirements"})
-        bid_response_channel = f"{self.channel_prefix}/response/bid"
+                                            "time_slot"})
+        response_channel = self.channel_names.bid_response
         if not ExternalStrategyConnectionManager.check_for_connected_and_reply(
-                self.redis, bid_response_channel, self.connected):
+                self.redis, response_channel, self.connected):
             return
         try:
             arguments = json.loads(payload["data"])
@@ -188,7 +187,7 @@ class SmartMeterExternalMixin(ExternalMixin):
             assert all(arg in allowed_args for arg in arguments.keys())
         except Exception: # noqa
             self.redis.publish_json(
-                bid_response_channel,
+                response_channel,
                 {"command": "bid",
                  "error": (
                      "Incorrect bid request. "
@@ -196,14 +195,14 @@ class SmartMeterExternalMixin(ExternalMixin):
                  "transaction_id": transaction_id})
         else:
             self.pending_requests.append(
-                IncomingRequest("bid", arguments, bid_response_channel))
+                IncomingRequest("bid", arguments, response_channel))
 
     def delete_bid(self, payload: Dict) -> None:
         """Callback for delete bid Redis endpoint."""
         transaction_id = self._get_transaction_id(payload)
-        delete_bid_response_channel = f"{self.channel_prefix}/response/delete_bid"
+        response_channel = self.channel_names.delete_bid_response
         if not ExternalStrategyConnectionManager.check_for_connected_and_reply(
-                self.redis, delete_bid_response_channel, self.connected):
+                self.redis, response_channel, self.connected):
             return
         try:
             arguments = json.loads(payload["data"])
@@ -212,7 +211,7 @@ class SmartMeterExternalMixin(ExternalMixin):
                 raise Exception("Bid_id is not associated with any posted bid.")
         except Exception as e:
             self.redis.publish_json(
-                delete_bid_response_channel,
+                response_channel,
                 {"command": "bid_delete",
                  "error": "Incorrect delete bid request. Available parameters: (bid)."
                           f"Exception: {str(e)}",
@@ -220,18 +219,18 @@ class SmartMeterExternalMixin(ExternalMixin):
             )
         else:
             self.pending_requests.append(
-                IncomingRequest("delete_bid", arguments, delete_bid_response_channel))
+                IncomingRequest("delete_bid", arguments, response_channel))
 
     def list_bids(self, payload: Dict) -> None:
         """Callback for list bids Redis endpoint."""
         assert self._get_transaction_id(payload)
-        list_bids_response_channel = f"{self.channel_prefix}/response/list_bids"
+        response_channel = self.channel_names.list_bids_response
         if not ExternalStrategyConnectionManager.check_for_connected_and_reply(
-                self.redis, list_bids_response_channel, self.connected):
+                self.redis, response_channel, self.connected):
             return
         arguments = json.loads(payload["data"])
         self.pending_requests.append(
-            IncomingRequest("list_bids", arguments, list_bids_response_channel))
+            IncomingRequest("list_bids", arguments, response_channel))
 
     def _incoming_commands_callback_selection(self, req: IncomingRequest) -> None:
         """
@@ -253,7 +252,7 @@ class SmartMeterExternalMixin(ExternalMixin):
         return [
             {"id": v.id, "price": v.price, "energy": v.energy}
             for _, v in market.get_offers().items()
-            if v.seller == self.device.name]
+            if v.seller.name == self.device.name]
 
     def filtered_market_bids(self, market: MarketBase) -> List[Dict]:
         """
@@ -266,7 +265,7 @@ class SmartMeterExternalMixin(ExternalMixin):
         return [
             {"id": bid.id, "price": bid.price, "energy": bid.energy}
             for _, bid in market.get_bids().items()
-            if bid.buyer == self.device.name]
+            if bid.buyer.name == self.device.name]
 
     def _bid_aggregator(self, arguments: Dict) -> Dict:
         """Post the bid to the market."""
@@ -278,14 +277,22 @@ class SmartMeterExternalMixin(ExternalMixin):
                 response_message = (
                     "The following arguments are not supported for this market and have been "
                     f"removed from your order: {filtered_fields}.")
+            time_slot = (str_to_pendulum_datetime(arguments["time_slot"])
+                         if arguments.get("time_slot") else None)
             if self.area.is_market_settlement(market.id):
                 if not self.state.can_post_settlement_bid(market.time_slot):
                     raise OrderCanNotBePosted("The smart meter did not consume enough energy, "
                                               "settlement bid can not be posted.")
                 required_energy = self.state.get_unsettled_deviation_kWh(market.time_slot)
-            else:
+            elif self.area.is_market_future(market.id):
+                required_energy = self.state.get_energy_requirement_Wh(time_slot) / 1000
+            elif self.area.is_market_spot(market.id):
                 required_energy = (
                     self.state.get_energy_requirement_Wh(market.time_slot) / 1000)
+            else:
+                logger.debug("The order cannot be posted on the market. "
+                             "(arguments: %s, market_id: %s", arguments, market.id)
+                raise OrderCanNotBePosted("The order cannot be posted on the market.")
             replace_existing = arguments.get("replace_existing", True)
             assert self.can_bid_be_posted(
                 arguments["energy"],
@@ -299,20 +306,19 @@ class SmartMeterExternalMixin(ExternalMixin):
                 arguments["price"],
                 arguments["energy"],
                 replace_existing=replace_existing,
-                attributes=arguments.get("attributes"),
-                requirements=arguments.get("requirements")
+                time_slot=time_slot
             )
             response = {
                 "command": "bid",
                 "status": "ready",
                 "area_uuid": self.device.uuid,
-                "bid": bid.to_json_string(replace_existing=replace_existing),
+                "bid": bid.to_json_string(),
                 "market_type": market.type_name,
                 "transaction_id": arguments.get("transaction_id"),
                 "message": response_message}
         except Exception: # noqa
-            logging.exception("Error when handling bid create on area %s: Bid Arguments: %s",
-                              self.device.name, arguments)
+            logger.exception("Error when handling bid create on area %s: Bid Arguments: %s",
+                             self.device.name, arguments)
             response = {"command": "bid", "status": "error",
                         "market_type": market.type_name,
                         "area_uuid": self.device.uuid,
@@ -331,8 +337,8 @@ class SmartMeterExternalMixin(ExternalMixin):
                         "area_uuid": self.device.uuid,
                         "transaction_id": arguments.get("transaction_id")}
         except Exception: # noqa
-            logging.exception("Error when handling bid delete on area %s: Bid Arguments: %s",
-                              self.device.name, arguments)
+            logger.exception("Error when handling bid delete on area %s: Bid Arguments: %s",
+                             self.device.name, arguments)
             response = {"command": "bid_delete", "status": "error",
                         "error_message": "Error when handling bid delete "
                                          f"on area {self.device.name} with arguments {arguments}.",
@@ -351,7 +357,7 @@ class SmartMeterExternalMixin(ExternalMixin):
                 "transaction_id": arguments.get("transaction_id")}
         except Exception: # noqa
             error_message = f"Error when handling list bids on area {self.device.name}"
-            logging.exception(error_message)
+            logger.exception(error_message)
             response = {"command": "list_bids", "status": "error",
                         "error_message": error_message,
                         "area_uuid": self.device.uuid,
@@ -373,8 +379,16 @@ class SmartMeterExternalMixin(ExternalMixin):
                     raise OrderCanNotBePosted("The smart meter did not produce enough energy, ",
                                               "settlement offer can not be posted.")
                 available_energy = self.state.get_unsettled_deviation_kWh(market.time_slot)
-            else:
+            elif self.area.is_market_future(market.id):
+                available_energy = self.state.get_available_energy_kWh(
+                    str_to_pendulum_datetime(arguments["time_slot"]))
+            elif self.area.is_market_spot(market.id):
                 available_energy = self.state.get_available_energy_kWh(market.time_slot)
+            else:
+                logger.debug("The order cannot be posted on the market. "
+                             "(arguments: %s, market_id: %s", arguments, market.id)
+                raise OrderCanNotBePosted("The order cannot be posted on the market.")
+
             replace_existing = arguments.pop("replace_existing", True)
             assert self.can_offer_be_posted(
                 arguments["energy"],
@@ -384,21 +398,21 @@ class SmartMeterExternalMixin(ExternalMixin):
                 replace_existing)
             offer_arguments = {
                 k: v for k, v in arguments.items()
-                if k not in ["transaction_id", "type", "time_slot"]}
+                if k not in ["transaction_id", "type"]}
             offer = self.post_offer(
                 market,
                 replace_existing,
                 **offer_arguments)
             response = {"command": "offer", "status": "ready",
                         "market_type": market.type_name,
-                        "offer": offer.to_json_string(replace_existing=replace_existing),
+                        "offer": offer.to_json_string(),
                         "area_uuid": self.device.uuid,
                         "transaction_id": arguments.get("transaction_id"),
                         "message": response_message}
         except Exception: # noqa
             error_message = (f"Error when handling offer create on area {self.device.name}: "
                              f"Offer Arguments: {arguments}")
-            logging.exception(error_message)
+            logger.exception(error_message)
             response = {"command": "offer", "status": "error",
                         "market_type": market.type_name,
                         "error_message": error_message,
@@ -420,7 +434,7 @@ class SmartMeterExternalMixin(ExternalMixin):
         except Exception: # noqa
             error_message = (f"Error when handling offer delete on area {self.device.name}: "
                              f"Offer Arguments: {arguments}")
-            logging.exception(error_message)
+            logger.exception(error_message)
             response = {"command": "offer_delete", "status": "error",
                         "error_message": error_message,
                         "area_uuid": self.device.uuid,
@@ -437,7 +451,7 @@ class SmartMeterExternalMixin(ExternalMixin):
                         "transaction_id": arguments.get("transaction_id")}
         except Exception: # noqa
             error_message = f"Error when handling list offers on area {self.device.name}"
-            logging.exception(error_message)
+            logger.exception(error_message)
             response = {"command": "list_offers", "status": "error",
                         "error_message": error_message,
                         "area_uuid": self.device.uuid,

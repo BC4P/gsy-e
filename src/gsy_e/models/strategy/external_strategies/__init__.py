@@ -24,6 +24,7 @@ from gsy_framework.constants_limits import ConstSettings
 from gsy_framework.data_classes import Trade
 from gsy_framework.enums import SpotMarketTypeEnum
 from gsy_framework.utils import str_to_pendulum_datetime
+from gsy_framework.redis_channels import ExternalStrategyChannels
 from pendulum import DateTime
 from redis import RedisError
 
@@ -76,7 +77,7 @@ class ExternalStrategyConnectionManager:
 
     @staticmethod
     def register(
-            redis: ResettableCommunicator, channel_prefix: str,
+            redis: ResettableCommunicator, response_channel: str,
             is_connected: bool, transaction_id: str, area_uuid: str) -> bool:
         """Register the client to act on behalf of an asset and return the status.
 
@@ -86,19 +87,18 @@ class ExternalStrategyConnectionManager:
         """
         if is_connected:
             return True
-        register_response_channel = f"{channel_prefix}/response/register_participant"
         try:
             redis.publish_json(
-                register_response_channel,
+                response_channel,
                 {"command": "register", "status": "ready", "registered": True,
                  "transaction_id": transaction_id, "device_uuid": area_uuid})
             return True
         except RedisError:
-            logging.exception("Error when registering to area %s", channel_prefix)
+            logging.exception("Error when registering to area %s", response_channel)
         return False
 
     @staticmethod
-    def unregister(redis: ResettableCommunicator, channel_prefix: str,
+    def unregister(redis: ResettableCommunicator, response_channel: str,
                    is_connected: bool, transaction_id: str) -> bool:
         """Unregister the client to deny future actions on behalf of an asset + return the status.
 
@@ -106,18 +106,17 @@ class ExternalStrategyConnectionManager:
                 - Publish a success message to the client
                 - Log the error traceback if un-registration failed
             """
-        unregister_response_channel = f"{channel_prefix}/response/unregister_participant"
         if not ExternalStrategyConnectionManager.check_for_connected_and_reply(
-                redis, unregister_response_channel, is_connected):
+                redis, response_channel, is_connected):
             return False
         try:
             redis.publish_json(
-                unregister_response_channel,
+                response_channel,
                 {"command": "unregister", "status": "ready", "unregistered": True,
                  "transaction_id": transaction_id})
             return False
         except RedisError:
-            logging.exception("Error when registering to area %s", channel_prefix)
+            logging.exception("Error when registering to area %s", response_channel)
             return is_connected
 
 
@@ -136,6 +135,7 @@ class ExternalMixin:
     owner: "Area"
     spot_market: "MarketBase"
     deactivate: Callable
+    event_activate: Callable
     get_state: Callable
     restore_state: Callable
     energy_traded: Callable
@@ -150,6 +150,17 @@ class ExternalMixin:
 
         super().__init__(*args, **kwargs)
         self.pending_requests: deque = deque()
+        self.channel_names = None
+
+    def event_activate(self, **kwargs):
+        """Initiate channel names"""
+        super().event_activate(**kwargs)
+        self.channel_names = ExternalStrategyChannels(
+            gsy_e.constants.EXTERNAL_CONNECTION_WEB,
+            gsy_e.constants.CONFIGURATION_ID,
+            asset_uuid=self.device.uuid,
+            asset_name=self.device.name
+        )
 
     # pylint: disable=no-self-use
     def _create_future_market_strategy(self):
@@ -179,19 +190,10 @@ class ExternalMixin:
     def channel_dict(self) -> Dict:
         """Common API interfaces for all external assets/markets."""
         return {
-            f"{self.channel_prefix}/register_participant": self._register,
-            f"{self.channel_prefix}/unregister_participant": self._unregister,
-            f"{self.channel_prefix}/device_info": self._device_info,
+            self.channel_names.register: self._register,
+            self.channel_names.unregister: self._unregister,
+            self.channel_names.device_info: self._device_info,
         }
-
-    @property
-    def channel_prefix(self) -> str:
-        """Prefix for the API endpoints."""
-
-        if gsy_e.constants.EXTERNAL_CONNECTION_WEB:  # REST
-            return f"external/{gsy_e.constants.CONFIGURATION_ID}/{self.device.uuid}"
-
-        return f"{self.device.name}"  # REDIS
 
     @property
     def is_aggregator_controlled(self) -> bool:
@@ -225,14 +227,14 @@ class ExternalMixin:
     def _register(self, payload: Dict) -> None:
         """Callback for the register redis command."""
         self._is_registered = ExternalStrategyConnectionManager.register(
-            self.redis, self.channel_prefix, self.connected,
+            self.redis, self.channel_names.register_response, self.connected,
             self._get_transaction_id(payload),
             area_uuid=self.device.uuid)
 
     def _unregister(self, payload: Dict) -> None:
         """Callback for the unregister redis command."""
         self._is_registered = ExternalStrategyConnectionManager.unregister(
-            self.redis, self.channel_prefix, self.connected,
+            self.redis, self.channel_names.unregister_response, self.connected,
             self._get_transaction_id(payload))
 
     def _update_connection_status(self) -> None:
@@ -249,13 +251,12 @@ class ExternalMixin:
 
         Return the selected asset info and stats.
         """
-        device_info_response_channel = f"{self.channel_prefix}/response/device_info"
         if not ExternalStrategyConnectionManager.check_for_connected_and_reply(
-                self.redis, device_info_response_channel, self.connected):
+                self.redis, self.channel_names.device_info_response, self.connected):
             return
         arguments = json.loads(payload["data"])
         self.pending_requests.append(
-            IncomingRequest("device_info", arguments, device_info_response_channel))
+            IncomingRequest("device_info", arguments, self.channel_names.device_info_response))
 
     def _device_info_impl(self, arguments: Dict, response_channel: str) -> None:
         """Implementation for the _device_info callback, publish this device info/stats."""
@@ -331,9 +332,7 @@ class ExternalMixin:
 
         required_args = {"price", "energy", "type", "transaction_id"}
         allowed_args = required_args.union({"replace_existing",
-                                            "time_slot",
-                                            "attributes",
-                                            "requirements"})
+                                            "time_slot"})
         try:
             # Check that all required arguments have been provided
             assert all(arg in arguments.keys() for arg in required_args)
@@ -349,15 +348,14 @@ class ExternalMixin:
 
             offer_arguments = {k: v
                                for k, v in arguments.items()
-                               if k not in ["transaction_id", "type", "time_slot"]}
+                               if k not in ["transaction_id", "type"]}
 
             offer = self.post_offer(
                 market, replace_existing=replace_existing, **offer_arguments)
-
             response = {
                 "command": "offer",
                 "status": "ready",
-                "offer": offer.to_json_string(replace_existing=replace_existing),
+                "offer": offer.to_json_string(),
                 "transaction_id": arguments.get("transaction_id"),
                 "area_uuid": self.device.uuid,
                 "market_type": market.type_name,
@@ -392,9 +390,7 @@ class ExternalMixin:
 
         required_args = {"price", "energy", "type", "transaction_id"}
         allowed_args = required_args.union({"replace_existing",
-                                            "time_slot",
-                                            "attributes",
-                                            "requirements"})
+                                            "time_slot"})
 
         try:
             # Check that all required arguments have been provided
@@ -412,12 +408,11 @@ class ExternalMixin:
                 arguments["price"],
                 arguments["energy"],
                 replace_existing=replace_existing,
-                attributes=arguments.get("attributes"),
-                requirements=arguments.get("requirements")
+                time_slot=time_slot
             )
             response = {
                 "command": "bid", "status": "ready",
-                "bid": bid.to_json_string(replace_existing=replace_existing),
+                "bid": bid.to_json_string(),
                 "area_uuid": self.device.uuid,
                 "transaction_id": arguments.get("transaction_id"),
                 "market_type": market.type_name,
@@ -475,14 +470,13 @@ class ExternalMixin:
                 self.redis.aggregator.add_batch_tick_event(
                     self.device.uuid, self._progress_info)
             elif self.connected:
-                tick_event_channel = f"{self.channel_prefix}/events/tick"
                 current_tick_info = {
                     **self._progress_info,
                     "event": "tick",
                     "area_uuid": self.device.uuid,
                     "device_info": self._device_info_dict
                 }
-                self.redis.publish_json(tick_event_channel, current_tick_info)
+                self.redis.publish_json(self.channel_names.tick, current_tick_info)
 
     def event_market_cycle(self) -> None:
         """Handler for the market cycle event."""
@@ -497,13 +491,13 @@ class ExternalMixin:
 
     def _publish_trade_event(self, trade, is_bid_trade) -> None:
         """Publish trade event to external concerned device/aggregator."""
-        if self.device.name not in (trade.seller, trade.buyer):
+        if self.device.name not in (trade.seller.name, trade.buyer.name):
             # Trade does not concern this device, skip it.
             return
 
         if (ConstSettings.MASettings.MARKET_TYPE == SpotMarketTypeEnum.TWO_SIDED.value and
-                ((trade.buyer == self.device.name and trade.is_offer_trade) or
-                 (trade.seller == self.device.name and trade.is_bid_trade))):
+                ((trade.buyer.uuid == self.device.uuid and not is_bid_trade) or
+                 (trade.seller.uuid == self.device.uuid and is_bid_trade))):
             # Do not track a 2-sided market trade that is originating from an Offer to a
             # consumer (which should have posted a bid). This occurs when the clearing
             # took place on the area market of the device, thus causing 2 trades, one for
@@ -521,16 +515,15 @@ class ExternalMixin:
                                    "local_market_fee":
                                        self.area.current_market.fee_class.grid_fee_rate
                                        if self.area.current_market is not None else "None",
-                                   "attributes": trade.offer_bid.attributes,
-                                   "seller": trade.seller
-                                   if trade.seller_id == self.device.uuid else "anonymous",
-                                   "buyer": trade.buyer
-                                   if trade.buyer_id == self.device.uuid else "anonymous",
-                                   "seller_origin": trade.seller_origin,
-                                   "buyer_origin": trade.buyer_origin,
-                                   "bid_id": trade.offer_bid.id
+                                   "seller": trade.seller.name
+                                   if trade.seller.uuid == self.device.uuid else "anonymous",
+                                   "buyer": trade.buyer.name
+                                   if trade.buyer.uuid == self.device.uuid else "anonymous",
+                                   "seller_origin": trade.seller.origin,
+                                   "buyer_origin": trade.buyer.origin,
+                                   "bid_id": trade.match_details["bid"].id
                                    if trade.is_bid_trade else "None",
-                                   "offer_id": trade.offer_bid.id
+                                   "offer_id": trade.match_details["offer"].id
                                    if trade.is_offer_trade else "None",
                                    "residual_bid_id": trade.residual.id
                                    if trade.residual is not None and trade.is_bid_trade
@@ -550,20 +543,20 @@ class ExternalMixin:
                                    "traded_energy": trade.traded_energy,
                                    "fee_price": trade.fee_price,
                                    "area_uuid": self.device.uuid,
-                                   "seller": trade.seller
-                                   if trade.seller == self.device.name else "anonymous",
-                                   "buyer": trade.buyer
-                                   if trade.buyer == self.device.name else "anonymous",
+                                   "seller": trade.seller.name
+                                   if trade.seller.uuid == self.device.uuid else "anonymous",
+                                   "buyer": trade.buyer.name
+                                   if trade.buyer.uuid == self.device.uuid else "anonymous",
                                    "residual_id": trade.residual.id
                                    if trade.residual is not None else "None"}
 
             bid_offer_key = "bid_id" if is_bid_trade else "offer_id"
             event_response_dict["event_type"] = (
-                "buy" if trade.buyer == self.device.name else "sell")
-            event_response_dict[bid_offer_key] = trade.offer_bid.id
+                "buy" if trade.buyer.name == self.device.name else "sell")
+            event_response_dict[bid_offer_key] = (
+                trade.match_details["bid"].id if is_bid_trade else trade.match_details["offer"].id)
 
-            trade_event_channel = f"{self.channel_prefix}/events/trade"
-            self.redis.publish_json(trade_event_channel, event_response_dict)
+            self.redis.publish_json(self.channel_names.trade, event_response_dict)
 
     def event_bid_traded(self, market_id: str, bid_trade: Trade):
         """Handler for the event when a bid is accepted for trading."""
@@ -585,12 +578,11 @@ class ExternalMixin:
             deactivate_msg = {"event": "finish"}
             self.redis.aggregator.add_batch_finished_event(self.owner.uuid, deactivate_msg)
         elif self.connected:
-            deactivate_event_channel = f"{self.channel_prefix}/events/finish"
             deactivate_msg = {
                 "event": "finish",
                 "area_uuid": self.device.uuid
             }
-            self.redis.publish_json(deactivate_event_channel, deactivate_msg)
+            self.redis.publish_json(self.channel_names.finish, deactivate_msg)
 
     def _bid_aggregator(self, arguments: Dict):
         """Callback for the bid endpoint when sent by aggregator."""
@@ -689,7 +681,6 @@ class ExternalMixin:
 
     def populate_market_info_to_connected_user(self) -> None:
         """Publish market info to the user who is connected directly from SDK."""
-        market_event_channel = f"{self.channel_prefix}/events/market"
         market_info = self.spot_market.info
         market_info["device_info"] = self._device_info_dict
         market_info["event"] = "market"
@@ -699,7 +690,7 @@ class ExternalMixin:
             get_market_maker_rate_from_config(self.area.current_market))
         market_info["last_market_stats"] = (
             self.area.stats.get_price_stats_current_market())
-        self.redis.publish_json(market_event_channel, market_info)
+        self.redis.publish_json(self.channel_names.market, market_info)
 
     def filter_degrees_of_freedom_arguments(self, order_arguments: Dict) -> Tuple[Dict, List[str]]:
         """Filter the arguments of an incoming order to remove Degrees of Freedom if necessary."""

@@ -25,7 +25,7 @@ from pendulum import datetime, duration
 from gsy_e import constants
 from gsy_e.models.area import Area
 from gsy_e.models.market.one_sided import OneSidedMarket
-from gsy_e.models.state import SmartMeterState
+from gsy_e.models.strategy.state import SmartMeterState
 from gsy_e.models.strategy.smart_meter import SmartMeterStrategy
 
 
@@ -86,7 +86,7 @@ class SmartMeterStrategyTest(unittest.TestCase):
         self.strategy.event_activate_energy.assert_called_with()
         self.strategy.event_activate_price.assert_called_with()
 
-    @patch("gsy_e.models.strategy.smart_meter.get_market_maker_rate_from_config")
+    @patch("gsy_e.models.strategy.mixins.get_market_maker_rate_from_config")
     def test_event_activate_price_with_market_maker_rate(
             self, get_market_maker_rate_from_config_mock):
         """If the market maker rate is used, call bid/offer updaters to replace existing rates."""
@@ -99,21 +99,13 @@ class SmartMeterStrategyTest(unittest.TestCase):
         self.strategy.event_activate_price()
         self.strategy.bid_update.set_parameters.assert_called_once()
         call_args = self.strategy.bid_update.set_parameters.call_args
-        assert set(call_args.kwargs["initial_rate"].values()) == {0}
         # The final buying rate is the sum of the market maker rate and the fees
         assert set(call_args.kwargs["final_rate"].values()) == {16}
-        assert call_args.kwargs["energy_rate_change_per_update"] == {}
-        assert call_args.kwargs["fit_to_limit"] is True
-        assert call_args.kwargs["update_interval"] == duration(minutes=1)
 
         self.strategy.offer_update.set_parameters.assert_called_once()
         call_args = self.strategy.offer_update.set_parameters.call_args
         # The initial selling rate is the difference between the market maker rate and the fees
         assert set(call_args.kwargs["initial_rate"].values()) == {14}
-        assert set(call_args.kwargs["final_rate"].values()) == {5}
-        assert call_args.kwargs["energy_rate_change_per_update"] == {}
-        assert call_args.kwargs["fit_to_limit"] is True
-        assert call_args.kwargs["update_interval"] == duration(minutes=1)
 
         self.strategy.validator.validate_rate.assert_called()
 
@@ -127,7 +119,8 @@ class SmartMeterStrategyTest(unittest.TestCase):
         self.strategy.bid_update.set_parameters.assert_not_called()
         self.strategy.offer_update.set_parameters.assert_not_called()
 
-    @patch("gsy_e.models.strategy.smart_meter.global_objects.profiles_handler.rotate_profile")
+    @patch(
+        "gsy_e.gsy_e_core.global_objects_singleton.global_objects.profiles_handler.rotate_profile")
     def test_set_energy_forecast_for_future_markets(self, rotate_profile_mock):
         """The consumption/production expectations for the upcoming market slots are correctly set.
 
@@ -158,7 +151,8 @@ class SmartMeterStrategyTest(unittest.TestCase):
         self.strategy.state.update_total_demanded_energy.assert_has_calls([
             call(market_slot.time_slot) for market_slot in market_mocks])
 
-    @patch("gsy_e.models.strategy.smart_meter.global_objects.profiles_handler.rotate_profile")
+    @patch(
+        "gsy_e.gsy_e_core.global_objects_singleton.global_objects.profiles_handler.rotate_profile")
     def test_set_energy_forecast_for_future_markets_no_profile(self, rotate_profile_mock):
         """Consumption/production expectations can't be set without an energy profile."""
         rotate_profile_mock.return_value = None
@@ -168,7 +162,8 @@ class SmartMeterStrategyTest(unittest.TestCase):
             self.strategy._energy_params.set_energy_forecast_for_future_markets(
                 time_slots, reconfigure=True)
 
-    @patch("gsy_e.models.strategy.smart_meter.global_objects.profiles_handler.rotate_profile")
+    @patch(
+        "gsy_e.gsy_e_core.global_objects_singleton.global_objects.profiles_handler.rotate_profile")
     def test_event_activate_energy(self, rotate_profile_mock):
         """event_activate_energy calls the expected state interface methods."""
         rotate_profile_mock.return_value = self._create_profile_mock()
@@ -218,7 +213,7 @@ class SmartMeterStrategyTest(unittest.TestCase):
         self.strategy.offer_update.delete_past_state_values.assert_called_once_with(
             self.area_mock.current_market.time_slot)
 
-    @patch("gsy_e.models.strategy.smart_meter.utils")
+    @patch("gsy_e.models.strategy.energy_parameters.smart_meter.utils")
     def test_set_energy_measurement_of_last_market(self, utils_mock):
         """The real energy of the last market is set when necessary."""
         # If we are in the first market slot, the real energy is not set

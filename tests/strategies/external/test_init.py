@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+# pylint: disable=protected-access, no-self-use
 import json
 import uuid
 from collections import deque
@@ -22,7 +23,7 @@ from unittest.mock import MagicMock, Mock, PropertyMock, patch
 
 import pytest
 from gsy_framework.constants_limits import ConstSettings, GlobalConfig
-from gsy_framework.data_classes import Bid, Offer, Trade
+from gsy_framework.data_classes import Bid, Offer, Trade, TraderDetails
 from gsy_framework.utils import format_datetime
 from parameterized import parameterized
 from pendulum import datetime, duration, now
@@ -31,22 +32,24 @@ from redis.exceptions import RedisError
 import gsy_e.constants
 import gsy_e.gsy_e_core.util
 from gsy_e.gsy_e_core.global_objects_singleton import global_objects
-from gsy_e.models.area import Area
+from gsy_e.models.area import Area, CoefficientArea
 from gsy_e.models.strategy import BidEnabledStrategy
 from gsy_e.models.strategy.external_strategies import (
     IncomingRequest, ExternalStrategyConnectionManager)
 from gsy_e.models.strategy.external_strategies.load import (
-    LoadForecastExternalStrategy, LoadHoursExternalStrategy, LoadProfileExternalStrategy)
+    LoadHoursForecastExternalStrategy, LoadProfileForecastExternalStrategy,
+    LoadHoursExternalStrategy, LoadProfileExternalStrategy)
 from gsy_e.models.strategy.external_strategies.pv import (
     PVExternalStrategy, PVForecastExternalStrategy, PVPredefinedExternalStrategy,
     PVUserProfileExternalStrategy)
 from gsy_e.models.strategy.external_strategies.storage import StorageExternalStrategy
+from gsy_e.models.strategy.scm import SCMStrategy
 
 transaction_id = str(uuid.uuid4())
 
 
-@pytest.fixture
-def ext_strategy_fixture(request):
+@pytest.fixture(name="ext_strategy_fixture")
+def fixture_ext_strategy(request):
     strategy = request.param
     config = Mock()
     config.slot_length = duration(minutes=15)
@@ -55,10 +58,18 @@ def ext_strategy_fixture(request):
     config.start_date = GlobalConfig.start_date
     config.grid_fee_type = ConstSettings.MASettings.GRID_FEE_TYPE
     config.end_date = GlobalConfig.start_date + duration(days=1)
-    area = Area(name="forecast_pv", config=config, strategy=strategy,
-                external_connection_available=True)
-    parent = Area(name="parent_area", children=[area], config=config)
-    parent.activate()
+    if isinstance(strategy, SCMStrategy):
+        area = CoefficientArea(
+            name="forecast_pv", config=config, strategy=strategy, grid_fee_constant=0.0)
+        parent = CoefficientArea(
+            name="parent_area", children=[area], config=config, grid_fee_constant=0.0)
+        parent.activate_energy_parameters(GlobalConfig.start_date)
+        area.activate_energy_parameters(GlobalConfig.start_date)
+    else:
+        area = Area(name="forecast_pv", config=config, strategy=strategy,
+                    external_connection_available=True)
+        parent = Area(name="parent_area", children=[area], config=config)
+        parent.activate()
     strategy.connected = True
     market = MagicMock()
     market.time_slot = GlobalConfig.start_date
@@ -83,7 +94,8 @@ class TestExternalMixin:
         self.parent.get_future_market_from_id = lambda _: market
         self.area.get_future_market_from_id = lambda _: market
 
-    def teardown_method(self) -> None:
+    @staticmethod
+    def teardown_method() -> None:
         ConstSettings.MASettings.MARKET_TYPE = 1
 
     def test_dispatch_tick_frequency_gets_calculated_correctly(self):
@@ -217,13 +229,13 @@ class TestExternalMixin:
 
     @parameterized.expand([
         [LoadHoursExternalStrategy(100),
-         Bid("bid_id", now(), 20, 1.0, "test_area")],
+         Bid("bid_id", now(), 20, 1.0, TraderDetails("test_area", ""))],
         [PVExternalStrategy(2, capacity_kW=0.16),
-         Offer("offer_id", now(), 20, 1.0, "test_area")],
+         Offer("offer_id", now(), 20, 1.0, TraderDetails("test_area", ""))],
         [StorageExternalStrategy(),
-         Bid("bid_id", now(), 20, 1.0, "test_area")],
+         Bid("bid_id", now(), 20, 1.0, TraderDetails("test_area", ""))],
         [StorageExternalStrategy(),
-         Offer("offer_id", now(), 20, 1.0, "test_area")]
+         Offer("offer_id", now(), 20, 1.0, TraderDetails("test_area", ""))]
     ])
     def test_dispatch_event_trade_to_external_aggregator(self, strategy, offer_bid):
         strategy._track_energy_sell_type = lambda _: None
@@ -237,15 +249,17 @@ class TestExternalMixin:
         current_time = now()
         if isinstance(offer_bid, Bid):
             self.area.strategy.add_bid_to_posted(market.id, offer_bid)
-            trade = Trade("id", current_time, offer_bid,
-                          "parent_area", "test_area", fee_price=0.23, seller_id=self.area.uuid,
-                          buyer_id=self.parent.uuid,
+            trade = Trade("id", current_time,
+                          TraderDetails("parent_area", str(self.area.uuid)),
+                          TraderDetails("test_area", str(self.parent.uuid)),
+                          fee_price=0.23, bid=offer_bid,
                           traded_energy=1, trade_price=20)
         else:
             self.area.strategy.offers.post(offer_bid, market.id)
-            trade = Trade("id", current_time, offer_bid,
-                          "test_area", "parent_area", fee_price=0.23, buyer_id=self.area.uuid,
-                          seller_id=self.parent.uuid,
+            trade = Trade("id", current_time,
+                          TraderDetails("test_area", str(self.parent.uuid)),
+                          TraderDetails("parent_area", str(self.area.uuid)),
+                          fee_price=0.23, offer=offer_bid,
                           traded_energy=1, trade_price=20)
 
         strategy.event_offer_traded(market_id="test_market", trade=trade)
@@ -253,7 +267,7 @@ class TestExternalMixin:
             self.area.uuid
 
         call_args = strategy.redis.aggregator.add_batch_trade_event.call_args_list[0][0][1]
-        assert set(call_args.keys()) == {"attributes", "residual_bid_id", "asset_id", "buyer",
+        assert set(call_args.keys()) == {"residual_bid_id", "asset_id", "buyer",
                                          "local_market_fee", "residual_offer_id", "total_fee",
                                          "traded_energy", "bid_id", "time", "seller",
                                          "trade_price", "trade_id", "offer_id", "event",
@@ -268,15 +282,15 @@ class TestExternalMixin:
         assert call_args["residual_bid_id"] == "None"
         assert call_args["residual_offer_id"] == "None"
         if isinstance(offer_bid, Bid):
-            assert call_args["bid_id"] == trade.offer_bid.id
+            assert call_args["bid_id"] == trade.match_details["bid"].id
             assert call_args["offer_id"] == "None"
-            assert call_args["seller"] == trade.seller
+            assert call_args["seller"] == trade.seller.name
             assert call_args["buyer"] == "anonymous"
         else:
             assert call_args["bid_id"] == "None"
-            assert call_args["offer_id"] == trade.offer_bid.id
+            assert call_args["offer_id"] == trade.match_details["offer"].id
             assert call_args["seller"] == "anonymous"
-            assert call_args["buyer"] == trade.buyer
+            assert call_args["buyer"] == trade.buyer.name
 
     @parameterized.expand([
         [LoadHoursExternalStrategy(100)],
@@ -293,8 +307,12 @@ class TestExternalMixin:
         strategy.state.pledged_sell_kWh = {market.time_slot: 0.0}
         strategy.state.offered_sell_kWh = {market.time_slot: 0.0}
         current_time = now()
-        trade = Trade("id", current_time, Offer("offer_id", now(), 20, 1.0, "test_area"),
-                      "test_area", "parent_area", fee_price=0.23,
+        trade = Trade("id", current_time,
+                      TraderDetails("test_area", str(self.area.uuid)),
+                      TraderDetails("parent_area", str(self.parent.uuid)),
+                      fee_price=0.23,
+                      offer=Offer("offer_id", now(), 20, 1.0,
+                                  TraderDetails("test_area", str(self.area.uuid))),
                       traded_energy=1, trade_price=20)
         strategy.event_offer_traded(market_id="test_market", trade=trade)
         assert strategy.redis.publish_json.call_args_list[0][0][0] == "test_area/events/trade"
@@ -304,10 +322,10 @@ class TestExternalMixin:
         assert call_args["trade_price"] == 20
         assert call_args["traded_energy"] == 1.0
         assert call_args["fee_price"] == 0.23
-        assert call_args["offer_id"] == trade.offer_bid.id
+        assert call_args["offer_id"] == trade.match_details["offer"].id
         assert call_args["residual_id"] == "None"
         assert call_args["time"] == current_time.isoformat()
-        assert call_args["seller"] == trade.seller
+        assert call_args["seller"] == trade.seller.name
         assert call_args["buyer"] == "anonymous"
         assert call_args["device_info"] == strategy._device_info_dict
 
@@ -327,27 +345,31 @@ class TestExternalMixin:
         strategy.state.offered_sell_kWh = {market.time_slot: 0.0}
         current_time = now()
         if isinstance(strategy, BidEnabledStrategy):
-            bid = Bid("offer_id", now(), 20, 1.0, "test_area")
+            bid = Bid("offer_id", now(), 20, 1.0, TraderDetails("test_area", strategy.owner.uuid))
             strategy.add_bid_to_posted(market.id, bid)
             skipped_trade = (
-                Trade("id", current_time, bid, "test_area", "parent_area",
+                Trade("id", current_time, TraderDetails("test_area", strategy.owner.uuid),
+                      TraderDetails("parent_area", "parent_area_uuid"), bid=bid,
                       fee_price=0.23, traded_energy=1, trade_price=1))
 
-            strategy.event_offer_traded(market_id=market.id, trade=skipped_trade)
+            strategy.event_bid_traded(market_id=market.id, bid_trade=skipped_trade)
             call_args = strategy.redis.aggregator.add_batch_trade_event.call_args_list
             assert call_args == []
 
             published_trade = (
-                Trade("id", current_time, bid, "parent_area", "test_area",
-                      fee_price=0.23, traded_energy=1, trade_price=1))
-            strategy.event_offer_traded(market_id=market.id, trade=published_trade)
-            assert strategy.redis.aggregator.add_batch_trade_event.call_args_list[0][0][0] == \
-                self.area.uuid
+                Trade("id", current_time, TraderDetails("parent_area", "parent_area_uuid"),
+                      TraderDetails("test_area", strategy.owner.uuid), fee_price=0.23, bid=bid,
+                      traded_energy=1, trade_price=1))
+            strategy.event_bid_traded(market_id=market.id, bid_trade=published_trade)
+            assert (strategy.redis.aggregator.add_batch_trade_event.call_args_list[0][0][0] ==
+                    self.area.uuid)
         else:
-            offer = Offer("offer_id", now(), 20, 1.0, "test_area")
+            offer = Offer("offer_id", now(), 20, 1.0,
+                          TraderDetails("test_area", strategy.owner.uuid))
             strategy.offers.post(offer, market.id)
             skipped_trade = (
-                Trade("id", current_time, offer, "parent_area", "test_area",
+                Trade("id", current_time, TraderDetails("parent_area", "parent_area_uuid"),
+                      TraderDetails("test_area", strategy.owner.uuid), offer=offer,
                       fee_price=0.23, traded_energy=1, trade_price=1))
             strategy.offers.sold_offer(offer, market.id)
 
@@ -356,11 +378,12 @@ class TestExternalMixin:
             assert call_args == []
 
             published_trade = (
-                Trade("id", current_time, offer, "test_area", "parent_area",
+                Trade("id", current_time, TraderDetails("test_area", strategy.owner.uuid),
+                      TraderDetails("parent_area", "parent_area_uuid"), offer=offer,
                       fee_price=0.23, traded_energy=1, trade_price=1))
             strategy.event_offer_traded(market_id=market.id, trade=published_trade)
-            assert strategy.redis.aggregator.add_batch_trade_event.call_args_list[0][0][0] == \
-                self.area.uuid
+            assert (strategy.redis.aggregator.add_batch_trade_event.call_args_list[0][0][0] ==
+                    self.area.uuid)
 
     def test_device_info_dict_for_load_strategy_reports_required_energy(self):
         strategy = LoadHoursExternalStrategy(100)
@@ -391,23 +414,28 @@ class TestExternalMixin:
         [StorageExternalStrategy()]
     ])
     def test_register_device(self, strategy):
-        self.config = MagicMock()
-        self.device = Area(name="test_area", config=self.config, strategy=strategy)
+        config = GlobalConfig
+        config.external_redis_communicator = Mock()
+        device = Area(name="area", config=config, strategy=strategy)
+        area = Area(name="test_area", config=config, children=[device])
+        device.strategy.owner = device
+        device.strategy.area = area
+        device.strategy.event_activate()
+
         payload = {"data": json.dumps({"transaction_id": transaction_id})}
-        self.device.strategy.owner = self.device
-        assert self.device.strategy.connected is False
-        self.device.strategy._register(payload)
-        self.device.strategy._update_connection_status()
-        assert self.device.strategy.connected is True
-        self.device.strategy._unregister(payload)
-        self.device.strategy._update_connection_status()
-        assert self.device.strategy.connected is False
+        assert device.strategy.connected is False
+        device.strategy._register(payload)
+        device.strategy._update_connection_status()
+        assert device.strategy.connected is True
+        device.strategy._unregister(payload)
+        device.strategy._update_connection_status()
+        assert device.strategy.connected is False
 
         payload = {"data": json.dumps({"transaction_id": None})}
         with pytest.raises(ValueError):
-            self.device.strategy._register(payload)
+            device.strategy._register(payload)
         with pytest.raises(ValueError):
-            self.device.strategy._unregister(payload)
+            device.strategy._unregister(payload)
 
     @parameterized.expand([
         [LoadHoursExternalStrategy(100)],
@@ -444,23 +472,25 @@ class TestExternalMixin:
         assert strategy._use_template_strategy is False
         strategy.state.restore_state.assert_called_once_with(state_dict)
 
+    @staticmethod
     @pytest.mark.parametrize("strategy", [
         LoadHoursExternalStrategy(100),
         PVExternalStrategy(2, capacity_kW=0.16),
         StorageExternalStrategy()
     ])
-    def test_get_market_from_cmd_arg_returns_spot_market_if_arg_missing(self, strategy):
+    def test_get_market_from_cmd_arg_returns_spot_market_if_arg_missing(strategy):
         strategy.area = Mock()
         strategy.area.spot_market = Mock()
         market = strategy._get_market_from_command_argument({})
         assert market == strategy.area.spot_market
 
+    @staticmethod
     @pytest.mark.parametrize("strategy", [
         LoadHoursExternalStrategy(100),
         PVExternalStrategy(2, capacity_kW=0.16),
         StorageExternalStrategy()
     ])
-    def test_get_market_from_cmd_arg_returns_spot_market(self, strategy):
+    def test_get_market_from_cmd_arg_returns_spot_market(strategy):
         strategy.area = Mock()
         strategy.area.spot_market = Mock()
         time_slot = format_datetime(now())
@@ -469,12 +499,13 @@ class TestExternalMixin:
         market = strategy._get_market_from_command_argument({"time_slot": time_slot})
         assert market == market_mock
 
+    @staticmethod
     @pytest.mark.parametrize("strategy", [
         LoadHoursExternalStrategy(100),
         PVExternalStrategy(2, capacity_kW=0.16),
         StorageExternalStrategy()
     ])
-    def test_get_market_from_cmd_arg_returns_settlement_market(self, strategy):
+    def test_get_market_from_cmd_arg_returns_settlement_market(strategy):
         strategy.area = Mock()
         strategy.area.spot_market = Mock()
         time_slot = format_datetime(now())
@@ -517,72 +548,78 @@ class TestExternalMixin:
 
 
 class TestForecastRelatedFeatures:
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()], indirect=True)
-    def test_set_energy_forecast_succeeds(self, ext_strategy_fixture):
+
+    @staticmethod
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
+    def test_set_energy_forecast_succeeds(ext_strategy_fixture):
         arguments = {"transaction_id": transaction_id,
                      "energy_forecast": {now().format(gsy_e.constants.DATE_TIME_FORMAT): 1}}
         payload = {"data": json.dumps(arguments)}
         assert ext_strategy_fixture.pending_requests == deque([])
         ext_strategy_fixture._set_energy_forecast(payload)
         assert len(ext_strategy_fixture.pending_requests) > 0
-        energy_forecast_response_channel = f"{ext_strategy_fixture.channel_prefix}/" \
-                                           "response/set_energy_forecast"
         assert (ext_strategy_fixture.pending_requests ==
                 deque([IncomingRequest("set_energy_forecast", arguments,
-                                       energy_forecast_response_channel)]))
+                                       ext_strategy_fixture.channel_names.energy_forecast)]))
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()], indirect=True)
-    def test_set_energy_forecast_fails_for_wrong_payload(self, ext_strategy_fixture):
+    @staticmethod
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
+    def test_set_energy_forecast_fails_for_wrong_payload(ext_strategy_fixture):
         ext_strategy_fixture.redis.publish_json = Mock()
         ext_strategy_fixture.pending_requests = deque([])
         payload = {"data": json.dumps({"transaction_id": transaction_id})}
         ext_strategy_fixture._set_energy_forecast(payload)
-        energy_forecast_response_channel = f"{ext_strategy_fixture.channel_prefix}/" \
-                                           "response/set_energy_forecast"
         ext_strategy_fixture.redis.publish_json.assert_called_with(
-            energy_forecast_response_channel, {"command": "set_energy_forecast",
-                                               "error": "Incorrect set_energy_forecast request. "
-                                                        "Available parameters: (energy_forecast).",
-                                               "transaction_id": transaction_id})
+            ext_strategy_fixture.channel_names.energy_forecast,
+            {"command": "set_energy_forecast",
+             "error": "Incorrect set_energy_forecast request. "
+                      "Available parameters: (energy_forecast).",
+             "transaction_id": transaction_id})
         assert len(ext_strategy_fixture.pending_requests) == 0
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()], indirect=True)
-    def test_set_energy_measurement_succeeds(self, ext_strategy_fixture):
+    @staticmethod
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
+    def test_set_energy_measurement_succeeds(ext_strategy_fixture):
         arguments = {"transaction_id": transaction_id,
                      "energy_measurement": {now().format(gsy_e.constants.DATE_TIME_FORMAT): 1}}
         payload = {"data": json.dumps(arguments)}
         assert ext_strategy_fixture.pending_requests == deque([])
         ext_strategy_fixture._set_energy_measurement(payload)
         assert len(ext_strategy_fixture.pending_requests) > 0
-        energy_measurement_response_channel = f"{ext_strategy_fixture.channel_prefix}/" \
-                                              "response/set_energy_measurement"
         assert (ext_strategy_fixture.pending_requests ==
                 deque([IncomingRequest("set_energy_measurement", arguments,
-                                       energy_measurement_response_channel)]))
+                                       ext_strategy_fixture.channel_names.energy_measurement)]))
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()],
-                             indirect=True)
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
     def test_set_energy_measurement_fails_for_wrong_payload(self, ext_strategy_fixture):
         ext_strategy_fixture.redis.publish_json = Mock()
         ext_strategy_fixture.pending_requests = deque([])
         payload = {"data": json.dumps({"transaction_id": transaction_id})}
         ext_strategy_fixture._set_energy_measurement(payload)
-        energy_measurement_response_channel = f"{ext_strategy_fixture.channel_prefix}/" \
-                                              "response/set_energy_measurement"
         ext_strategy_fixture.redis.publish_json.assert_called_with(
-            energy_measurement_response_channel, {"command": "set_energy_measurement",
-                                                  "error": "Incorrect set_energy_measurement"
-                                                           " request. "
-                                                  "Available parameters: (energy_measurement).",
-                                                  "transaction_id": transaction_id})
+            ext_strategy_fixture.channel_names.energy_measurement,
+            {"command": "set_energy_measurement",
+             "error": "Incorrect set_energy_measurement request. "
+                      "Available parameters: (energy_measurement).",
+             "transaction_id": transaction_id})
         assert len(ext_strategy_fixture.pending_requests) == 0
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()], indirect=True)
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
     def test_set_energy_forecast_impl_succeeds(self, ext_strategy_fixture):
         ext_strategy_fixture.redis.publish_json = Mock()
         arguments = {"transaction_id": transaction_id,
@@ -594,9 +631,10 @@ class TestForecastRelatedFeatures:
                                "status": "ready",
                                "transaction_id": arguments["transaction_id"]})
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()],
-                             indirect=True)
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
     def test_set_energy_forecast_impl_fails_for_wrong_time_format(self, ext_strategy_fixture):
         ext_strategy_fixture.redis.publish_json.reset_mock()
         response_channel = "response_channel"
@@ -611,9 +649,10 @@ class TestForecastRelatedFeatures:
                                "transaction_id": arguments["transaction_id"],
                                "error_message": error_message})
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()],
-                             indirect=True)
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
     def test_set_energy_forecast_impl_fails_for_negative_energy(self, ext_strategy_fixture):
         ext_strategy_fixture.redis.publish_json.reset_mock()
         response_channel = "response_channel"
@@ -628,8 +667,10 @@ class TestForecastRelatedFeatures:
                                "transaction_id": arguments["transaction_id"],
                                "error_message": error_message})
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()], indirect=True)
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
     def test_set_energy_measurement_impl_succeeds(self, ext_strategy_fixture):
         # test successful call of set_energy_measurement_impl:
         ext_strategy_fixture.redis.publish_json = Mock()
@@ -642,9 +683,10 @@ class TestForecastRelatedFeatures:
                                "status": "ready",
                                "transaction_id": arguments["transaction_id"]})
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()],
-                             indirect=True)
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
     def test_set_energy_measurement_impl_fails_for_wrong_time_format(self, ext_strategy_fixture):
         response_channel = "response_channel"
         ext_strategy_fixture.redis.publish_json.reset_mock()
@@ -659,9 +701,10 @@ class TestForecastRelatedFeatures:
                                "transaction_id": arguments["transaction_id"],
                                "error_message": error_message})
 
-    @pytest.mark.parametrize("ext_strategy_fixture", [LoadForecastExternalStrategy(),
-                                                      PVForecastExternalStrategy()],
-                             indirect=True)
+    @pytest.mark.parametrize("ext_strategy_fixture", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()], indirect=True)
     def test_set_energy_measurement_impl_fails_for_negative_energy(self, ext_strategy_fixture):
         response_channel = "response_channel"
         ext_strategy_fixture.redis.publish_json.reset_mock()
@@ -676,8 +719,10 @@ class TestForecastRelatedFeatures:
                                "transaction_id": arguments["transaction_id"],
                                "error_message": error_message})
 
-    @pytest.mark.parametrize("ext_strategy", [LoadForecastExternalStrategy(),
-                                              PVForecastExternalStrategy()])
+    @pytest.mark.parametrize("ext_strategy", [
+        LoadHoursForecastExternalStrategy(),
+        LoadProfileForecastExternalStrategy(),
+        PVForecastExternalStrategy()])
     @pytest.mark.parametrize("command_name", ["set_energy_forecast", "set_energy_measurement"])
     def test_set_device_energy_data_aggregator_succeeds(self, ext_strategy, command_name):
         ext_strategy.owner = Mock()
@@ -721,11 +766,12 @@ class TestAreaExternalConnectionManager:
         redis_communicator.publish_json.assert_not_called()
 
         # is_connected=False
+        response_channel = "channel1"
         assert ExternalStrategyConnectionManager.register(
-            redis_communicator, "channel1", is_connected=False,
+            redis_communicator, response_channel, is_connected=False,
             transaction_id="transaction1", area_uuid="area1") is True
         redis_communicator.publish_json.assert_called_once_with(
-            "channel1/response/register_participant",
+            response_channel,
             {"command": "register", "status": "ready", "registered": True,
              "transaction_id": "transaction1", "device_uuid": "area1"}
         )
@@ -752,11 +798,12 @@ class TestAreaExternalConnectionManager:
 
         # is_connected=True
         check_for_connected_mock.return_value = True
+        response_channel = "channel1"
         assert ExternalStrategyConnectionManager.unregister(
-            redis_communicator, "channel1", is_connected=True,
+            redis_communicator, response_channel, is_connected=True,
             transaction_id="transaction1") is False
         redis_communicator.publish_json.assert_called_once_with(
-            "channel1/response/unregister_participant",
+            response_channel,
             {"command": "unregister", "status": "ready", "unregistered": True,
              "transaction_id": "transaction1"}
         )
@@ -768,7 +815,8 @@ class TestAreaExternalConnectionManager:
             redis_communicator, "channel1", is_connected=False,
             transaction_id="transaction1") is False
 
-    def test_check_for_connected_and_reply(self):
+    @staticmethod
+    def test_check_for_connected_and_reply():
         """Test the check_for_connected_and_reply method of AreaExternalConnectionManager."""
         redis_communicator = MagicMock()
 

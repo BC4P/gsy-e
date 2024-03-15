@@ -5,20 +5,21 @@ Setup for a microgrid + DSO
 """
 import os
 
+from gsy_framework.constants_limits import ConstSettings
+
 from gsy_e.models.area import Area
+from gsy_e.models.strategy.infinite_bus import InfiniteBusStrategy
+from gsy_e.models.strategy.load_hours import LoadHoursStrategy
 from gsy_e.models.strategy.market_maker_strategy import MarketMakerStrategy
 from gsy_e.models.strategy.predefined_load import DefinedLoadStrategy
-from gsy_framework.constants_limits import ConstSettings, GlobalConfig
-from gsy_e.models.strategy.infinite_bus import InfiniteBusStrategy
-from gsy_e.models.strategy.storage import StorageStrategy
-from gsy_e.models.strategy.load_hours import LoadHoursStrategy
 from gsy_e.models.strategy.predefined_pv import PVUserProfileStrategy
+from gsy_e.models.strategy.storage import StorageStrategy
 
 current_dir = os.path.dirname(__file__)
 
 
 def get_setup(config):
-    GlobalConfig.FUTURE_MARKET_DURATION_HOURS = 0
+    ConstSettings.FutureMarketSettings.FUTURE_MARKET_DURATION_HOURS = 0
     ConstSettings.GeneralSettings.DEFAULT_UPDATE_INTERVAL = 1
     ConstSettings.MASettings.MARKET_TYPE = 2
     ConstSettings.MASettings.MIN_OFFER_AGE = 1
@@ -108,6 +109,7 @@ def get_setup(config):
 
 
                 ], grid_fee_percentage=0, grid_fee_constant=0,
+                min_offer_age=1, min_bid_age=1
             ),
             Area("Feed In Tariff", strategy=InfiniteBusStrategy(
                 energy_buy_rate=15.2,

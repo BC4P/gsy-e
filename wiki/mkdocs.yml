@@ -10,30 +10,23 @@ nav:
     - 'Grid Singularity Development Path': 'development-path.md'
     - 'Licensing and Open Source Ethos': 'licensing.md'
 - 'Set up a simulation of an active local energy market':
-    - 'Introduction to the Grid Singularity Exchange Interface: Singularity Map':
+    - 'Instructions for running simulations using the Grid Singularity interface: Singularity Map':
         - 'Build a community': 'community.md'
         - 'Assets configuration':
-          - 'Overview' : 'configuration.md'
+          - 'Assets Configuration Overview' : 'configuration.md'
           - 'Home': 'home.md'
           - 'Solar Panels (PVs)': 'solar-panels.md'
-          - 'Consumption (Load Profiles)': 'consumption.md'
+          - 'Consumption (Load) Profiles': 'consumption.md'
           - 'Battery (Storage)': 'battery.md'
           - 'Power Plant': 'power-plant.md'
+          - 'Heat Pumps and District Heating':
+            - 'Heat Pump & Virtual Heat Pump Overview': 'heat-pumps-general.md'
+            - 'Heat Pump': 'heat-pump.md'
+            - 'Virtual Heat Pump': 'virtual-heat-pump.md'
         - 'Community Settings': 'community-settings.md'
         - 'Grid Market Settings': 'grid-market-settings.md'
-        - 'Events (Adding Assets, Communities, etc.)': 'events.md'
-        - 'Results and Analysis':
-            - 'Results dashboard': 'results-dashboard'
-            - 'Community': 'results-community'
-            - 'Bills and traded energy': 'bills-traded-energy.md'
-            - 'Self-Sufficiency and Self-Consumption': 'self-sufficiency-self-consumption.md'
-            - 'Trade profile': 'trade-profile.md'
-            - 'Aggregate Market Summary': 'aggregate-market-summary.md'
-            - 'Price': 'price.md'
-            - 'Trades': 'trades.md'
-            - 'Results Download': 'results-download.md'
-            - 'Duplicating simulations': 'duplicating-simulations'
-    - 'Instructions for researchers on backend code':
+        - 'Events (Adding, Removing Assets, etc.)': 'events.md'
+    - 'Instructions for running simulations using the Grid Singularity backend code':
         - 'Backend Installation Instructions':
             - 'Linux Installation Instructions': 'linux-installation-instructions.md'
             - 'Mac Installation Instructions': 'ios-installation-instructions.md'
@@ -44,15 +37,27 @@ nav:
             - 'Setting General Configuration Parameters': 'setting-configuration-parameters.md'
             - 'Market Backend Configuration': 'market-backend-configuration.md'
             - 'Assets Installation': 'assets-installation.md'
+            - 'Configuring Events': 'backend_events.md'
+            - 'Launching Simulation': 'launch_simulation.md'
         - 'Backend Results':
-            - 'Overview': 'backend-results-overview.md'
+            - 'Backend Results Overview': 'backend-results-overview.md'
             - 'Energy bills': 'backend-results-energy-bills.md'
     - 'Data Requirements and File Upload Format': 'data-requirements.md'
+- 'Results and Analysis':
+    - 'Results dashboard': 'results-dashboard'
+    - 'Net Energy Traded, Energy Cost (Bill) and Energy Cost Savings': 'bills_savings.md'
+    - 'Self-Sufficiency and Self-Consumption': 'self-sufficiency-self-consumption.md'
+    - 'Trade Profile and Energy Peak Percentage': 'trade-profile.md'
+    - 'Aggregate Market Summary': 'aggregate-market-summary.md'
+    - 'Price Graph': 'price.md'
+    - 'Cumulative trades chart and bids and offers graph': 'trades.md'
+    - 'Results Download': 'results-download.md'
+    - 'Duplicating simulations': 'duplicating-simulations'
 - 'Market Mechanisms':
     - 'Market Types':
-      - 'Overview': 'market-types.md'
+      - 'Market Types Overview': 'market-types.md'
       - 'Spot Market':
-          - 'Spot Maket Types': 'spot-market-types.md'
+          - 'Spot Market Types': 'spot-market-types.md'
           - 'One-Sided Pay-as-Offer Market': 'one-sided-pay-as-offer.md'
           - 'Two-Sided Pay-as-Bid Market': 'two-sided-pay-as-bid.md'
           - 'Two-Sided Pay-as-Clear Market': 'two-sided-pay-as-clear.md'
@@ -76,7 +81,7 @@ nav:
     - 'Connect to the Grid Singularity APIs':
         - 'Introduction': 'APIs-introduction.md'
         - 'Configure trading strategies through the Grid Singularity Asset API':
-            - 'Walkthrough': 'configure-trading-strategies-walkthrough.md'
+            - 'Grid Singularity Asset API Overview': 'configure-trading-strategies-walkthrough.md'
             - 'Asset API':
                 - 'Asset API Events': 'asset-api-events.md'
                 - 'Asset API Commands': 'asset-api-commands.md'
@@ -84,8 +89,8 @@ nav:
             - 'Launch the Asset API':
                 - 'Registration - Simulations run on the User-Interface': 'registration-asset-api-user-interface.md'
                 - 'Registration - Simulations run on the Backend': 'registration-asset-api-backend.md'
-        - 'Implement dynamic grid fees through the Grid Singlarity Grid Operator API':
-            - 'Walkthrough': 'implement-grid-fees-walkthrough.md'
+        - 'Implement dynamic grid fees through the Grid Singularity Grid Operator API':
+            - 'Grid Singularity Grid Operator API Overview': 'implement-grid-fees-walkthrough.md'
             - 'Grid Operator API.':
                 - 'Grid Operator API Events': 'grid-operator-api-events.md'
                 - 'Grid Operator API Commands': 'grid-operator-api-commands.md'
@@ -94,7 +99,7 @@ nav:
                 - 'Registration - Simulations run on the User-Interface': 'registration-grid-operator-api-user-interface.md'
                 - 'Registration - Simulations run on the Backend': 'registration-grid-operator-api-backend.md'
         - 'Customise the clearing algorithm through the Grid Singularity Matching API':
-            - 'Walkthrough': 'matching-api-walkthrough.md'
+            - 'Grid Singularity Matching API Overview': 'matching-api-walkthrough.md'
             - 'Matching API':
                 - 'Matching API Events': 'matching-api-events.md'
                 - 'Matching API Commands': 'matching-api-commands.md'
@@ -102,13 +107,18 @@ nav:
             - 'Launch the Matching API':
                 - 'Registration - Simulations run on the User-Interface': 'registration-matching-api-user-interface.md'
                 - 'Registration - Simulations run on the Backend': 'registration-matching-api-backend.md'
+        - 'Extract data (historical profile and grid topology) through the Grid Singularity Historical Data and Grid Data APIs': 'get-simulation-data.md'
 - 'Grid Singularity Canary Test Network':
     - 'Connect to a Grid Singularity Canary Test Network': 'connect-ctn.md'
     - 'Send live energy asset data streams to the Grid Singularity exchange':
         - 'Establish a connection with your energy assets': 'connection-energy-assets.md'
         - 'Send live data streams via the Exchange SDK': 'send-data-exchange-sdk.md'
         - 'Send live data streams via the REST API': 'send-data-rest-api.md'
-- 'Blockchain Integration': 'blockchain.md'
+- 'Blockchain Integration':
+  - 'GSY DEX Overview': 'blockchain.md'
+  - 'GSY DEX System Components Overview': 'blockchain-system-components-overview.md'
+  - 'GSY DEX Node Installation, Operation and Development': 'blockchain-installation.md'
+  - 'GSY DEX Off-Chain Storage': 'blockchain-off-chain-storage.md'
 - 'References': 'references.md'
 - 'Releases Archive': 'releases.md'
 ## - 'Not included':
@@ -161,6 +171,9 @@ extra_css:
 extra_javascript:
   - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML
   - https://research.web3.foundation/en/latest/mathjax-config.js
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 # Repository that houses the source code for this site. This
 # is needed to render the nice GH link on the top right.
@@ -193,6 +206,9 @@ markdown_extensions:
         permalink: true
     - mdtooltips
     - attr_list
+    - md_in_html
+    - pymdownx.arithmatex:
+        generic: true
 
 plugins:
     - search:

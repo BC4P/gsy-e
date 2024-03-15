@@ -1,9 +1,7 @@
 name: gsy-e-ci
 on:
   pull_request:
-    branches:
-      - master
-      - staging
+
 jobs:
   test-build:
     runs-on: ubuntu-latest
@@ -59,8 +57,17 @@ jobs:
       run: |
         export SOLC_BINARY=$HOME/solc/usr/bin/solc
         export LD_LIBRARY_PATH=$HOME/solc/usr/lib:$LD_LIBRARY_PATH
-        pip install tox
+        pip install tox==3.24.4
         tox -e $TOXENV --verbose
+
+    - name: Archive artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+          name: behave-output
+          path: |
+            output
+            coverage.xml
 
     - name: Check coverage with Codecov
       uses: codecov/codecov-action@v1

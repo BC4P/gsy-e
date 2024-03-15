@@ -1,5 +1,9 @@
-![alt_text](img/balancing-market-implementation-1.png)
-***Figure 3.1***. *Structure of Balancing Market in Grid Singularity exchange*
+
+<figure markdown>
+  ![alt_text](img/balancing-market-implementation-1.png){:text-align:center"}
+  <figcaption><b>Figure 4.7</b>: Structure of Balancing Market in Grid Singularity exchange
+</figcaption>
+</figure>
 
 Grid Singularity energy exchange bottom-up market design allows participants to engage in Local Energy Market (LEM) for energy trading, providing energy balance at a local level. Grid Singularity Exchange flexibility trading also facilitates the procurement of flexibility locally from participants to assist distribution grid operation in balancing the grid.
 
@@ -36,7 +40,7 @@ The balancing agent follows the lead of the _spot_market_trade_ of its lower hie
 
 ##Constant Parameters
 
-The following are the constant parameters related to the balancing market, with defaults available [here](https://github.com/gridsingularity/gsy-framework/blob/master/gsy_framework/constants_limits.py).
+The following are the constant parameters related to the balancing market, with defaults available [here](https://github.com/gridsingularity/gsy-framework/blob/master/gsy_framework/constants_limits.py){target=_blank}.
 
 ENABLE_BALANCING_MARKET →  (Default: False) (It enables the simulation with Balancing Market)
 
@@ -48,4 +52,4 @@ BALANCING_OFFER_SUPPLY_RATIO → (Default: 0.1) (It dictates the ratio of _spot_
 
 BALANCING_FLEXIBLE_LOADS_SUPPORT → (Default: True) (It enables [Load Strategy](consumption.md) to place _supply_balancing_offer_ (effectively curtailing it's load))
 
-Multiple examples of balancing market setup are available [here](https://github.com/gridsingularity/gsy-e/tree/master/src/gsy_e/setup/balancing_market).
+Multiple examples of balancing market setup are available [here](https://github.com/gridsingularity/gsy-e/tree/master/src/gsy_e/setup/balancing_market){target=_blank}.

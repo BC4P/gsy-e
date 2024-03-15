@@ -5,17 +5,19 @@ The main goal of an electricity market exchange is to balance the grid in terms 
 3. **[Settlement market](settlement-market-structure.md)**: post-delivery trades of deviations between energy physically produced/consumed and energy purchased in the spot or futures market to settle imbalances locally before BRP billing.
 4. **Futures market**: Trades for the longer term future consumption and production of energy are agreed in advance. This market is currently in development of Grid Singularity energy exchange implementation.
 
-![alt_text](img/market-types.png)
+<figure markdown>
+  ![alt_text](img/market-types.png){:text-align:center"}
+  <figcaption><b>Figure 4.1</b>: Market Types implemented in Grid Singularity Exchange.
+</figcaption>
+</figure>
 
-***Figure 3.1***. *Market Types implemented in Grid Singularity Exchange.*
-
-###Market Slots
+### Market Slots
 
 The energy spot market is broken into time slots, with the default set to 15 minutes of simulated time. For a one-day simulation, 96 market slots would occur with the default setting. Learn how to adjust market slot length [here](community-settings.md).
 
 Depending on the market type, bids and offers are either matched within or at the end of each slot. Bids and offers that remain unmatched at the end of a market slot are annulled, and assets may be penalised for any energy they physically produce or consume that is not transacted for.
 
-###Market Ticks
+### Market Ticks
 
 Each slot is further segmented into ticks. The default setting for a tick is 15 seconds of simulated time (simulated time is the time unit within a simulation as opposed to real-time which is the real-life time that the simulation takes; e.g. a simulation can simulate 7 days of trading in minutes or hours), and this configuration may be changed. The default 15 minute market slot is made up of 60 15-second ticks.
 

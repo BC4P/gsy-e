@@ -5,7 +5,7 @@ import pytest
 from pendulum import now, duration
 
 from gsy_e.constants import FLOATING_POINT_TOLERANCE
-from gsy_e.models.state import StorageState, ESSEnergyOrigin, EnergyOrigin
+from gsy_e.models.strategy.state import StorageState, ESSEnergyOrigin, EnergyOrigin
 
 SAMPLE_STATE = {
     "pledged_sell_kWh": {},
@@ -15,7 +15,6 @@ SAMPLE_STATE = {
     "charge_history": {},
     "charge_history_kWh": {},
     "offered_history": {},
-    "used_history": {},
     "energy_to_buy_dict": {},
     "energy_to_sell_dict": {},
     "used_storage": 0.0,
@@ -46,7 +45,8 @@ class TestStorageState:
         storage_state.add_default_values_to_state_profiles(active_market_slot_time_list)
         storage_state.offered_buy_kWh[future_time_slots[0]] = 10
         storage_state.offered_sell_kWh[future_time_slots[0]] = 10
-        with patch("gsy_e.models.state.GlobalConfig.FUTURE_MARKET_DURATION_HOURS", 5):
+        with patch("gsy_e.models.strategy.state.storage_state.ConstSettings.FutureMarketSettings."
+                   "FUTURE_MARKET_DURATION_HOURS", 5):
             storage_state.market_cycle(past_time_slot, current_time_slot, future_time_slots)
             # The future_time_slots[0] is in the future, so it won't reset
             assert storage_state.offered_buy_kWh[future_time_slots[0]] == 10
@@ -339,7 +339,7 @@ class TestStorageState:
 
     @staticmethod
     def test_activate_convert_energy_to_power():
-        with patch("gsy_e.models.state.convert_kW_to_kWh") as mocked_func:
+        with patch("gsy_e.models.strategy.state.storage_state.convert_kW_to_kWh") as mocked_func:
             storage_state = StorageState()
             current_time_slot = now()
             storage_state.activate(
@@ -374,8 +374,6 @@ class TestStorageState:
                 storage_state.energy_to_buy_dict, time_slot, 0)
             assert_time_slot_in_dict_attribute_with_default_value(
                 storage_state.offered_history, time_slot, "-")
-            assert_time_slot_in_dict_attribute_with_default_value(
-                storage_state.used_history, time_slot, "-")
             assert_time_slot_in_dict_attribute_with_default_value(
                 storage_state.time_series_ess_share, time_slot, {ESSEnergyOrigin.UNKNOWN: 0.,
                                                                  ESSEnergyOrigin.LOCAL: 0.,

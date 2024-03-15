@@ -11,6 +11,7 @@ redis
 rq
 pytz
 sortedcontainers
+sympy
 pony
 psutil
 psycopg2-binary

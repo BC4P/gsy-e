@@ -24,14 +24,15 @@ from uuid import uuid4
 import pendulum
 import pytest
 from gsy_framework.constants_limits import ConstSettings, GlobalConfig
-from gsy_framework.data_classes import Offer
+from gsy_framework.data_classes import Offer, TraderDetails
 from gsy_framework.exceptions import GSyDeviceException
 from gsy_framework.read_user_profile import read_arbitrary_profile, InputProfileTypes
 from gsy_framework.utils import generate_market_slot_list
-from pendulum import DateTime, duration, today, datetime
+from gsy_framework.enums import ConfigurationType
+from pendulum import DateTime, duration, datetime
 
 from gsy_e.constants import TIME_ZONE, TIME_FORMAT
-from gsy_e.gsy_e_core.util import (d3a_path, change_global_config)
+from gsy_e.gsy_e_core.util import gsye_root_path, change_global_config
 from gsy_e.models.config import create_simulation_config_from_global_config
 from gsy_e.models.strategy.predefined_pv import PVPredefinedStrategy, PVUserProfileStrategy
 
@@ -56,7 +57,6 @@ TIME = pendulum.today(tz=TIME_ZONE).at(hour=10, minute=45, second=0)
 class FakeArea:
     def __init__(self, count):
         self.current_tick = 2
-        self.appliance = None
         self.name = 'FakeArea'
         self.uuid = str(uuid4())
         self.count = count
@@ -122,14 +122,13 @@ class FakeMarket:
         self.id = str(count)
         self.created_offers = []
         self.offers = {
-            'id': Offer(id='id', creation_time=pendulum.now(), price=10, energy=0.5, seller='A')}
+            'id': Offer(id='id', creation_time=pendulum.now(), price=10, energy=0.5,
+                        seller=TraderDetails("A", ""))}
         self._time_slot = TIME
 
-    def offer(self, price, energy, seller, original_price=None, seller_origin=None,
-              seller_origin_id=None, seller_id=None, time_slot=None):
+    def offer(self, price, energy, seller, original_price=None, time_slot=None):
         offer = Offer(str(uuid.uuid4()), pendulum.now(), price, energy, seller,
-                      original_price, seller_origin=seller_origin,
-                      seller_origin_id=seller_origin_id, seller_id=seller_id, time_slot=time_slot)
+                      original_price, time_slot=time_slot)
         self.created_offers.append(offer)
         self.offers[offer.id] = offer
         return offer
@@ -154,8 +153,9 @@ class FakeMarketTimeSlot(FakeMarket):
 
 class FakeTrade:
     def __init__(self, offer):
-        self.offer_bid = offer
-        self.seller = "FakeSeller"
+        self.offer = offer
+        self.match_details = {"offer": offer, "bid": None}
+        self.seller = TraderDetails("FakeSeller", "")
         self.traded_energy = offer.energy
         self.trade_price = offer.price
 
@@ -169,7 +169,7 @@ class FakeTrade:
 
     @property
     def trade_rate(self):
-        return self.offer_bid.energy_rate
+        return self.offer.energy_rate
 
 
 """TEST1"""
@@ -213,7 +213,8 @@ def pv_test3(area_test3):
     p = PVPredefinedStrategy(cloud_coverage=ConstSettings.PVSettings.DEFAULT_POWER_PROFILE)
     p.area = area_test3
     p.owner = area_test3
-    p.offers.posted = {Offer('id', pendulum.now(), 30, 1, 'FakeArea'): area_test3.test_market.id}
+    p.offers.posted = {Offer('id', pendulum.now(), 30, 1,
+                             TraderDetails("FakeArea", "")): area_test3.test_market.id}
     return p
 
 
@@ -240,7 +241,7 @@ def pv_test4(area_test3, called):
     p.owner = area_test3
     p.offers.posted = {
         Offer(id='id', creation_time=pendulum.now(), price=20, energy=1,
-              seller='FakeArea'): area_test3.test_market.id
+              seller=TraderDetails("FakeArea", "")): area_test3.test_market.id
     }
     return p
 
@@ -340,7 +341,9 @@ def test_does_not_offer_sold_energy_again(pv_test6, market_test3):
     assert market_test3.created_offers[0].energy == \
         pv_test6.state._energy_production_forecast_kWh[TIME]
     fake_trade = FakeTrade(market_test3.created_offers[0])
-    fake_trade.seller = pv_test6.owner.name
+    fake_trade.seller = TraderDetails(
+        pv_test6.owner.name, fake_trade.seller.uuid,
+        fake_trade.seller.origin, fake_trade.seller.origin_uuid)
     fake_trade.time_slot = market_test3.time_slot
     pv_test6.event_offer_traded(market_id=market_test3.id, trade=fake_trade)
     market_test3.created_offers = []
@@ -383,12 +386,14 @@ def pv_test_cloudy(area_test7):
 
 def test_correct_interpolation_power_profile():
     slot_length = 20
+    original_slot_length = GlobalConfig.slot_length
     GlobalConfig.slot_length = duration(minutes=slot_length)
-    profile_path = pathlib.Path(d3a_path + "/resources/Solar_Curve_W_sunny.csv")
-    profile = read_arbitrary_profile(InputProfileTypes.POWER, str(profile_path))
+    profile_path = pathlib.Path(gsye_root_path + "/resources/Solar_Curve_W_sunny.csv")
+    profile = read_arbitrary_profile(InputProfileTypes.POWER_W, str(profile_path))
     times = list(profile)
     for ii in range(len(times)-1):
         assert abs((times[ii]-times[ii+1]).in_seconds()) == slot_length * 60
+    GlobalConfig.slot_length = original_slot_length
 
 
 def test_predefined_pv_constructor_rejects_incorrect_parameters():
@@ -404,7 +409,7 @@ def test_predefined_pv_constructor_rejects_incorrect_parameters():
 
 
 def test_pv_user_profile_constructor_rejects_incorrect_parameters():
-    user_profile_path = os.path.join(d3a_path, "resources/Solar_Curve_W_sunny.csv")
+    user_profile_path = os.path.join(gsye_root_path, "resources/Solar_Curve_W_sunny.csv")
     with pytest.raises(GSyDeviceException):
         PVUserProfileStrategy(power_profile=user_profile_path, panel_count=-1)
     with pytest.raises(GSyDeviceException):
@@ -419,15 +424,21 @@ def test_pv_user_profile_constructor_rejects_incorrect_parameters():
                               fit_to_limit=False, energy_rate_decrease_per_update=-1)
 
 
-def test_profile_with_date_and_seconds_can_be_parsed():
+@pytest.mark.parametrize("is_canary", [False, True])
+def test_profile_with_date_and_seconds_can_be_parsed(is_canary):
+    original_start_date = GlobalConfig.start_date
+    original_config_type = GlobalConfig.CONFIG_TYPE
+    original_slot_length = GlobalConfig.slot_length
+    if is_canary:
+        GlobalConfig.CONFIG_TYPE = ConfigurationType.CANARY_NETWORK.value
     GlobalConfig.slot_length = duration(minutes=15)
     profile_date = datetime(year=2019, month=3, day=2)
     GlobalConfig.start_date = profile_date
-    profile_path = pathlib.Path(d3a_path + "/resources/datetime_seconds_profile.csv")
-    profile = read_arbitrary_profile(InputProfileTypes.POWER, str(profile_path))
+    profile_path = pathlib.Path(gsye_root_path + "/resources/datetime_seconds_profile.csv")
+    profile = read_arbitrary_profile(InputProfileTypes.POWER_W, str(profile_path))
     # After the 6th element the rest of the entries are populated with the last value
     expected_energy_values = [1.5, 1.25, 1.0, 0.75, 0.5, 0.25]
-    if GlobalConfig.IS_CANARY_NETWORK:
+    if GlobalConfig.is_canary_network():
         energy_values_profile = []
         energy_values_after_profile = []
         end_time = profile_date.add(minutes=GlobalConfig.slot_length.minutes * 6)
@@ -443,4 +454,6 @@ def test_profile_with_date_and_seconds_can_be_parsed():
         assert list(profile.values())[:6] == expected_energy_values
         assert all(x == 0.25 for x in list(profile.values())[6:])
 
-    GlobalConfig.start_date = today(tz=TIME_ZONE)
+    GlobalConfig.start_date = original_start_date
+    GlobalConfig.CONFIG_TYPE = original_config_type
+    GlobalConfig.slot_length = original_slot_length

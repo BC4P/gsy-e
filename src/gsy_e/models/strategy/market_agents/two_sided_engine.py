@@ -18,7 +18,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from collections import namedtuple
 from typing import Dict, TYPE_CHECKING
 
-from gsy_framework.data_classes import Bid
+from gsy_framework.constants_limits import ConstSettings
+from gsy_framework.data_classes import Bid, TraderDetails
+from gsy_framework.enums import SpotMarketTypeEnum
+from gsy_framework.utils import limit_float_precision
 
 from gsy_e.constants import FLOATING_POINT_TOLERANCE
 from gsy_e.gsy_e_core.exceptions import BidNotFoundException, MarketException
@@ -42,7 +45,6 @@ class TwoSidedEngine(MAEngine):
         self.bid_trade_residual: Dict[str, Bid] = {}
         self.min_bid_age = min_bid_age
         self.bid_age: Dict[str, int] = {}
-        self._current_tick = 0
 
     def __repr__(self):
         return "<TwoSidedPayAsBidEngine [{s.owner.name}] {s.name} " \
@@ -63,25 +65,25 @@ class TwoSidedEngine(MAEngine):
         return requirements
 
     def _forward_bid(self, bid):
-        if bid.buyer == self.markets.target.name:
+        if bid.buyer.name == self.markets.target.name:
             return None
 
-        if bid.price < 0.0:
+        if bid.price < -FLOATING_POINT_TOLERANCE:
             self.owner.log.debug("Bid is not forwarded because price < 0")
             return None
         try:
+            updated_price = limit_float_precision((
+                self.markets.source.fee_class.update_forwarded_bid_with_fee(
+                    bid.energy_rate, bid.original_energy_rate)) * bid.energy)
+
             forwarded_bid = self.markets.target.bid(
-                price=(self.markets.source.fee_class.update_forwarded_bid_with_fee(
-                    bid.energy_rate, bid.original_price / bid.energy)) * bid.energy,
+                price=updated_price,
                 energy=bid.energy,
-                buyer=self.owner.name,
+                buyer=TraderDetails(
+                    self.owner.name, self.owner.uuid, bid.buyer.origin, bid.buyer.origin_uuid),
                 original_price=bid.original_price,
-                buyer_origin=bid.buyer_origin,
-                buyer_origin_id=bid.buyer_origin_id,
-                buyer_id=self.owner.uuid,
-                time_slot=bid.time_slot,
-                requirements=self._update_requirements_prices(bid),
-                attributes=bid.attributes
+                dispatch_event=False,
+                time_slot=bid.time_slot
             )
         except MarketException:
             self.owner.log.debug("Bid is not forwarded because grid fees of the target market "
@@ -90,6 +92,8 @@ class TwoSidedEngine(MAEngine):
 
         self._add_to_forward_bids(bid, forwarded_bid)
         self.owner.log.trace(f"Forwarding bid {bid} to {forwarded_bid}")
+
+        self.markets.target.dispatch_market_bid_event(forwarded_bid)
         return forwarded_bid
 
     def _delete_forwarded_bid_entries(self, bid):
@@ -107,9 +111,11 @@ class TwoSidedEngine(MAEngine):
             return False
 
         if not self.owner.usable_bid(bid):
+            self.bid_age.pop(bid.id, None)
             return False
 
-        if self.owner.name == bid.buyer:
+        if self.owner.name == bid.buyer.name:
+            self.bid_age.pop(bid.id, None)
             return False
 
         if current_tick - self.bid_age[bid.id] < self.min_bid_age:
@@ -120,8 +126,6 @@ class TwoSidedEngine(MAEngine):
     # pylint: disable=unused-argument
     def tick(self, *, area):
         super().tick(area=area)
-
-        self._current_tick = area.current_tick
 
         for bid in self.markets.source.get_bids().values():
             if bid.id not in self.bid_age:
@@ -140,14 +144,17 @@ class TwoSidedEngine(MAEngine):
 
     def event_bid_traded(self, *, bid_trade):
         """Perform actions that need to be done when BID_TRADED event is triggered."""
-        bid_info = self.forwarded_bids.get(bid_trade.offer_bid.id)
+        bid_info = self.forwarded_bids.get(bid_trade.match_details["bid"].id)
         if not bid_info:
             return
 
-        if bid_trade.offer_bid.id == bid_info.target_bid.id:
+        if bid_trade.match_details["bid"].id == bid_info.target_bid.id:
             # Bid was traded in target market, buy in source
-            market_bid = self.markets.source.bids[bid_info.source_bid.id]
-            assert bid_trade.traded_energy <= market_bid.energy, \
+            market_bid = self.markets.source.bids.get(bid_info.source_bid.id)
+            if not market_bid:
+                return
+
+            assert market_bid.energy - bid_trade.traded_energy >= -FLOATING_POINT_TOLERANCE, \
                 "Traded bid on target market has more energy than the market bid."
 
             source_rate = bid_info.source_bid.energy_rate
@@ -172,17 +179,16 @@ class TwoSidedEngine(MAEngine):
             self.markets.source.accept_bid(
                 bid=market_bid,
                 energy=bid_trade.traded_energy,
-                seller=self.owner.name,
-                already_tracked=False,
+                seller=TraderDetails(
+                    self.owner.name, self.owner.uuid,
+                    bid_trade.seller.origin, bid_trade.seller.origin_uuid),
                 trade_offer_info=trade_offer_info,
-                seller_origin=bid_trade.seller_origin,
-                seller_origin_id=bid_trade.seller_origin_id,
-                seller_id=self.owner.uuid
+                offer=None
             )
             self._delete_forwarded_bids(bid_info)
             self.bid_age.pop(bid_info.source_bid.id, None)
 
-        elif bid_trade.offer_bid.id == bid_info.source_bid.id:
+        elif bid_trade.match_details["bid"].id == bid_info.source_bid.id:
             # Bid was traded in the source market by someone else
 
             self._delete_forwarded_bids(bid_info)
@@ -270,3 +276,17 @@ class TwoSidedEngine(MAEngine):
         bid_info = BidInfo(source_bid, target_bid)
         self.forwarded_bids[source_bid.id] = bid_info
         self.forwarded_bids[target_bid.id] = bid_info
+
+    def event_bid(self, bid: Bid) -> None:
+        """Perform actions on the event of the creation of a new bid."""
+        if (ConstSettings.MASettings.MARKET_TYPE == SpotMarketTypeEnum.TWO_SIDED.value and
+                self.min_bid_age == 0):
+            # Propagate bid immediately if the MIN_BID_AGE is set to zero.
+            source_bid = self.markets.source.bids.get(bid.id)
+            if not source_bid:
+                self.bid_age.pop(bid.id, None)
+                return
+            if source_bid.id not in self.bid_age:
+                self.bid_age[source_bid.id] = self._current_tick
+            if self._should_forward_bid(source_bid, self._current_tick):
+                self._forward_bid(source_bid)

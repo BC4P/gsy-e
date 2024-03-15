@@ -4,11 +4,12 @@
     "slot_length": "15m",
     "tick_length": "15s",
     "cloud_coverage": 0,
-    "start_date": "2022-06-30"
+    "start_date": "2024-01-12"
   },
   "advanced_settings": {
     "GeneralSettings": {
       "DEFAULT_MARKET_MAKER_RATE": 30,
+      "DEFAULT_FEED_IN_TARIFF": 0,
       "DEFAULT_UPDATE_INTERVAL": 1,
       "MIN_UPDATE_INTERVAL": 1,
       "MARKET_CLEARING_FREQUENCY_PER_SLOT": 3,
@@ -44,7 +45,12 @@
       "RELATIVE_STD_FROM_FORECAST_FLOAT": 10.0
     },
     "FutureMarketSettings": {
+      "FUTURE_MARKET_DURATION_HOURS": 0,
       "FUTURE_MARKET_CLEARING_INTERVAL_MINUTES": 15
+    },
+    "ForwardMarketSettings": {
+      "ENABLE_FORWARD_MARKETS": false,
+      "FULLY_AUTO_TRADING": true
     },
     "AreaSettings": {
       "PERCENTAGE_FEE_LIMIT": [
@@ -77,12 +83,12 @@
       ],
       "CAPACITY": 1.2,
       "CAPACITY_LIMIT": [
-        0.0001,
+        0,
         2000000
       ],
       "MAX_ABS_POWER": 5,
       "MAX_ABS_POWER_RANGE": [
-        0.0001,
+        0,
         2000000
       ],
       "BUYING_RATE_RANGE": [
@@ -207,6 +213,37 @@
       "FINAL_SELLING_RATE": 0,
       "MAX_WIND_TURBINE_OUTPUT_W": 160
     },
+    "HeatPumpSettings": {
+      "MAX_POWER_RATING_KW_LIMIT": [
+        0,
+        9223372036854775807
+      ],
+      "TEMP_C_LIMIT": [
+        0.0,
+        200.0
+      ],
+      "TANK_VOLUME_L_LIMIT": [
+        0,
+        9223372036854775807
+      ],
+      "BUYING_RATE_LIMIT": [
+        0,
+        10000
+      ],
+      "MAX_POWER_RATING_KW": 3,
+      "CONSUMPTION_KW": 0.5,
+      "MIN_TEMP_C": 50,
+      "MAX_TEMP_C": 65,
+      "INIT_TEMP_C": 50,
+      "EXT_TEMP_C": 10,
+      "TANK_VOL_L": 50,
+      "SOURCE_TYPE": 0,
+      "BUYING_RATE_RANGE": [
+        0,
+        30
+      ],
+      "PREFERRED_BUYING_RATE": 30
+    },
     "MASettings": {
       "GRID_FEE_TYPE": 1,
       "VALID_FEE_TYPES": [
@@ -216,7 +253,7 @@
       "MARKET_TYPE": 1,
       "MARKET_TYPE_LIMIT": [
         1,
-        2
+        3
       ],
       "BID_OFFER_MATCH_TYPE": 1,
       "BID_OFFER_MATCH_TYPE_LIMIT": [
@@ -241,7 +278,12 @@
       "FLEXIBLE_LOADS_SUPPORT": true
     },
     "SCMSettings": {
-      "GRID_FEES_REDUCTION": 0.28
+      "GRID_FEES_REDUCTION": 0.28,
+      "MARKET_ALGORITHM": 1,
+      "MARKET_ALGORITHM_LIMIT": [
+        1,
+        3
+      ]
     }
   }
 }

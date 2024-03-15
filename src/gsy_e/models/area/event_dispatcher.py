@@ -19,11 +19,13 @@ from logging import getLogger
 from typing import Union, Dict, TYPE_CHECKING, Optional
 
 from gsy_framework.constants_limits import ConstSettings
+from gsy_framework.enums import AvailableMarketTypes
 from gsy_framework.enums import SpotMarketTypeEnum
 from numpy.random import random
 from pendulum import DateTime
 
 from gsy_e.events.event_structures import MarketEvent, AreaEvent
+from gsy_e.gsy_e_core.enums import FORWARD_MARKET_TYPES
 from gsy_e.gsy_e_core.exceptions import WrongMarketTypeException
 from gsy_e.gsy_e_core.redis_connections.area_market import RedisCommunicator
 from gsy_e.models.area.redis_dispatcher.area_event_dispatcher import RedisAreaEventDispatcher
@@ -33,12 +35,12 @@ from gsy_e.models.area.redis_dispatcher.market_event_dispatcher import (
 from gsy_e.models.area.redis_dispatcher.market_notify_event_subscriber import (
     MarketNotifyEventSubscriber)
 from gsy_e.models.market import MarketBase
-from gsy_e.models.market.market_structures import AvailableMarketTypes
 from gsy_e.models.strategy.market_agents.balancing_agent import BalancingAgent
 from gsy_e.models.strategy.market_agents.future_agent import FutureAgent
 from gsy_e.models.strategy.market_agents.one_sided_agent import OneSidedAgent
 from gsy_e.models.strategy.market_agents.settlement_agent import SettlementAgent
 from gsy_e.models.strategy.market_agents.two_sided_agent import TwoSidedAgent
+
 
 if TYPE_CHECKING:
     from gsy_e.models.area import Area
@@ -52,13 +54,14 @@ class AreaDispatcher:
     """
     Responsible for dispatching the area and market events to the area strategies, and,
     if the area has no strategy, to broadcast the events to the children of the area. Maintain
-    dicts with interarea agents for each market type.
+    dicts with market agents for each market type.
     """
     def __init__(self, area: "Area"):
         self._spot_agents: Dict[DateTime, OneSidedAgent] = {}
         self._balancing_agents: Dict[DateTime, BalancingAgent] = {}
         self._settlement_agents: Dict[DateTime, SettlementAgent] = {}
         self._future_agent: Optional[FutureAgent] = None
+        self._forward_agents: Optional[Dict[AvailableMarketTypes, FutureAgent]] = {}
         self.area = area
 
     @property
@@ -75,6 +78,11 @@ class AreaDispatcher:
     def future_agent(self):
         """Return the future agent."""
         return self._future_agent
+
+    @property
+    def forward_agents(self):
+        """Return the forward agents."""
+        return self._forward_agents
 
     @property
     def settlement_agents(self) -> Dict[DateTime, SettlementAgent]:
@@ -170,6 +178,13 @@ class AreaDispatcher:
         for child in sorted(self.area.children, key=lambda _: random()):
             child.dispatcher.event_listener(event_type, **kwargs)
 
+        # TODO: Enable the following block once GSYE-340 is implemented
+        # if ConstSettings.ForwardMarketSettings.ENABLE_FORWARD_MARKETS:
+        #     for forward_market_type in self._forward_agents:
+        #         self._broadcast_notification_to_area_and_child_agents(
+        #             forward_market_type, event_type, **kwargs)
+        #     return
+
         market_id = kwargs.get("market_id")
         if not market_id and isinstance(event_type, MarketEvent):
             assert False, "MarketEvent should always provide a market_id."
@@ -227,7 +242,7 @@ class AreaDispatcher:
             "owner": owner,
             "higher_market": higher_market,
             "lower_market": lower_market,
-            "min_offer_age": ConstSettings.MASettings.MIN_OFFER_AGE
+            "min_offer_age": owner._min_offer_age
         }
 
         if market_type == AvailableMarketTypes.SPOT:
@@ -236,7 +251,7 @@ class AreaDispatcher:
             if ConstSettings.MASettings.MARKET_TYPE == SpotMarketTypeEnum.TWO_SIDED.value:
                 return TwoSidedAgent(
                     **agent_constructor_arguments,
-                    min_bid_age=ConstSettings.MASettings.MIN_BID_AGE
+                    min_bid_age=owner._min_bid_age
                 )
             raise WrongMarketTypeException("Wrong market type setting flag "
                                            f"{ConstSettings.MASettings.MARKET_TYPE}")
@@ -244,7 +259,7 @@ class AreaDispatcher:
             return SettlementAgent(**agent_constructor_arguments)
         if market_type == AvailableMarketTypes.BALANCING:
             return BalancingAgent(**agent_constructor_arguments)
-        if market_type == AvailableMarketTypes.FUTURE:
+        if market_type in [AvailableMarketTypes.FUTURE, *FORWARD_MARKET_TYPES]:
             return FutureAgent(**agent_constructor_arguments)
 
         assert False, f"Market type not supported {market_type}"
@@ -272,6 +287,24 @@ class AreaDispatcher:
         if not self.area.children:
             return False
         return True
+
+    def create_market_agents_for_forward_markets(
+            self, market: MarketBase, market_type: AvailableMarketTypes
+    ) -> None:
+        """Create area agents for future markets; There should only be one per Area at any time."""
+        if not self._should_agent_be_created:
+            return
+        if market_type not in self.area.parent.forward_markets:
+            return
+        higher_market = self.area.parent.forward_markets[market_type]
+
+        market_agent = self._create_agent_object(
+            owner=self.area,
+            higher_market=higher_market,
+            lower_market=market,
+            market_type=market_type
+        )
+        self._forward_agents[market_type] = market_agent
 
     def create_market_agents_for_future_markets(self, market: MarketBase) -> None:
         """Create area agents for future markets; There should only be one per Area at any time."""

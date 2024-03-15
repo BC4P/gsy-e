@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from gsy_e.models.market import MarketBase
 
 
-d3a_path = os.path.dirname(inspect.getsourcefile(gsy_e))
+gsye_root_path = os.path.dirname(inspect.getsourcefile(gsy_e))
 
 
 INTERVAL_DH_RE = rex("/^(?:(?P<days>[0-9]{1,4})[d:])?(?:(?P<hours>[0-9]{1,2})[h:])?$/")
@@ -204,13 +204,18 @@ def read_settings_from_file(settings_file):
         with open(settings_file, "r", encoding="utf-8") as sf:
             settings = json.load(sf)
         advanced_settings = settings["advanced_settings"]
+
+        sim_duration = settings["basic_settings"].get("sim_duration")
+        slot_length = settings["basic_settings"].get("slot_length")
+        tick_length = settings["basic_settings"].get("tick_length")
         simulation_settings = {
-            "sim_duration": IntervalType("H:M")(
-                settings["basic_settings"].get("sim_duration", GlobalConfig.sim_duration)),
-            "slot_length": IntervalType("M:S")(
-                settings["basic_settings"].get("slot_length", GlobalConfig.slot_length)),
-            "tick_length": IntervalType("M:S")(
-                settings["basic_settings"].get("tick_length", GlobalConfig.tick_length)),
+            # pylint: disable=used-before-assignment
+            "sim_duration": (IntervalType("H:M")(sim_duration)
+                             if sim_duration else GlobalConfig.sim_duration),
+            "slot_length": (IntervalType("M:S")(slot_length)
+                            if slot_length else GlobalConfig.slot_length),
+            "tick_length": (IntervalType("M:S")(tick_length)
+                            if tick_length else GlobalConfig.tick_length),
             "cloud_coverage": settings["basic_settings"].get(
                 "cloud_coverage", advanced_settings["PVSettings"]["DEFAULT_POWER_PROFILE"]),
             "enable_degrees_of_freedom": settings["basic_settings"].get(
@@ -310,10 +315,6 @@ def change_global_config(**kwargs):
             pass
 
 
-def validate_const_settings_for_simulation():
-    """Validate constant settings for simulation."""
-
-
 def round_floats_for_ui(number):
     """Round floats for UI."""
     return round(number, 3)
@@ -403,7 +404,7 @@ def export_default_settings_to_json_file():
             "start_date": instance(GlobalConfig.start_date).format(gsy_e.constants.DATE_FORMAT),
     }
     all_settings = {"basic_settings": base_settings, "advanced_settings": constsettings_to_dict()}
-    settings_filename = os.path.join(d3a_path, "setup", "gsy_e_settings.json")
+    settings_filename = os.path.join(gsye_root_path, "setup", "gsy_e_settings.json")
     with open(settings_filename, "w") as settings_file:
         settings_file.write(json.dumps(all_settings, indent=2))
 
@@ -411,15 +412,15 @@ def export_default_settings_to_json_file():
 def area_sells_to_child(trade, area_name, child_names):
     """Area sells to child."""
     return (
-        area_name_from_area_or_ma_name(trade.seller) == area_name
-        and area_name_from_area_or_ma_name(trade.buyer) in child_names)
+        area_name_from_area_or_ma_name(trade.seller.name) == area_name
+        and area_name_from_area_or_ma_name(trade.buyer.name) in child_names)
 
 
 def child_buys_from_area(trade, area_name, child_names):
     """Child buys from area."""
     return (
-        area_name_from_area_or_ma_name(trade.buyer) == area_name
-        and area_name_from_area_or_ma_name(trade.seller) in child_names)
+        area_name_from_area_or_ma_name(trade.buyer.name) == area_name
+        and area_name_from_area_or_ma_name(trade.seller.name) in child_names)
 
 
 def if_not_in_list_append(target_list, obj):
@@ -464,27 +465,6 @@ def convert_area_throughput_kVA_to_kWh(transfer_capacity_kWA, slot_length):
         if transfer_capacity_kWA is not None else 0.
 
 
-def get_simulation_queue_name():
-    """Get simulation queue name."""
-    listen_to_cn = os.environ.get("LISTEN_TO_CANARY_NETWORK_REDIS_QUEUE", "no") == "yes"
-    return (ConstSettings.GeneralSettings.CN_JOB_QUEUE_NAME
-            if listen_to_cn else ConstSettings.GeneralSettings.SIM_JOB_QUEUE_NAME)
-
-
-class ExternalTickCounter:
-    """External tick counter."""
-
-    def __init__(self, ticks_per_slot: int, dispatch_frequency_percent: int):
-        self._dispatch_tick_frequency = int(
-            ticks_per_slot *
-            (dispatch_frequency_percent / 100)
-        )
-
-    def is_it_time_for_external_tick(self, current_tick_in_slot: int) -> bool:
-        """Boolean return if time for external tick."""
-        return current_tick_in_slot % self._dispatch_tick_frequency == 0
-
-
 def should_read_profile_from_db(profile_uuid):
     """Boolean return if profile to be read from DB."""
     return profile_uuid is not None and gsy_e.constants.CONNECT_TO_PROFILES_DB
@@ -510,26 +490,21 @@ def is_time_slot_in_past_markets(time_slot: DateTime, current_time_slot: DateTim
     return time_slot < current_time_slot
 
 
-class FutureMarketCounter:
-    """Hold a time counter for the future market.
+def memory_usage_percent():
+    """Returns the percentage of limit utilization."""
+    memory_limit_file = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    memory_usage_file = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
 
-    In the future market, we only want to clear in a predefined interval.
-    """
-    def __init__(self):
-        self._last_time_dispatched = None
+    try:
+        with open(memory_limit_file, "r") as limit:
+            mem_limit = limit.read()
+    except OSError:
+        return 0
 
-    def is_time_for_clearing(self, current_time: DateTime) -> bool:
-        """Compare current time with the latest time clearing was dispatched.
+    try:
+        with open(memory_usage_file, "r") as usage:
+            mem_usage = usage.read()
+    except OSError:
+        return 0
 
-        Returns True if the FUTURE_MARKET_CLEARING_INTERVAL_MINUTES has
-        already passed since the last dispatch time.
-        """
-        if not self._last_time_dispatched:
-            self._last_time_dispatched = current_time
-            return True
-        duration_in_min = (current_time - self._last_time_dispatched).minutes
-        if (duration_in_min >=
-                ConstSettings.FutureMarketSettings.FUTURE_MARKET_CLEARING_INTERVAL_MINUTES):
-            self._last_time_dispatched = current_time
-            return True
-        return False
+    return round(int(mem_usage) / int(mem_limit) * 100)

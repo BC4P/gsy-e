@@ -15,100 +15,33 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-import math
 import traceback
 from logging import getLogger
 
-import pendulum
-from gsy_framework.constants_limits import ConstSettings, GlobalConfig
+from gsy_framework.constants_limits import ConstSettings
+from gsy_framework.data_classes import TraderDetails
 from gsy_framework.exceptions import GSyException
 from gsy_framework.read_user_profile import read_arbitrary_profile, InputProfileTypes
 from gsy_framework.utils import (
-    convert_kW_to_kWh, find_object_of_same_weekday_and_time, key_in_dict_and_not_none)
+    find_object_of_same_weekday_and_time, key_in_dict_and_not_none)
 from gsy_framework.validators import PVValidator
-from pendulum import duration  # noqa
-from pendulum.datetime import DateTime
+from pendulum import duration
 
 from gsy_e import constants
 from gsy_e.gsy_e_core.exceptions import MarketException
-from gsy_e.gsy_e_core.util import get_market_maker_rate_from_config
-from gsy_e.models.state import PVState
 from gsy_e.models.base import AssetType
-from gsy_e.models.strategy import BidEnabledStrategy, utils
+from gsy_e.models.strategy import BidEnabledStrategy
+from gsy_e.models.strategy.energy_parameters.pv import PVEnergyParameters
 from gsy_e.models.strategy.future.strategy import future_market_strategy_factory
+from gsy_e.models.strategy.mixins import UseMarketMakerMixin
 from gsy_e.models.strategy.settlement.strategy import settlement_market_strategy_factory
+from gsy_e.models.strategy.state import PVState
 from gsy_e.models.strategy.update_frequency import TemplateStrategyOfferUpdater
 
 log = getLogger(__name__)
 
 
-class PVEnergyParameters:
-    """Energy parameters for the PV strategy with gaussian generation profile."""
-    def __init__(self, panel_count: int = 1, capacity_kW: float = None):
-        PVValidator.validate_energy(panel_count=panel_count, capacity_kW=capacity_kW)
-
-        self.panel_count = panel_count
-        self.capacity_kW = capacity_kW
-        self._state = PVState()
-
-    def serialize(self):
-        """Return dict with the current energy parameter values."""
-        return {
-            "panel_count": self.panel_count,
-            "capacity_kW": self.capacity_kW
-        }
-
-    def activate(self, simulation_config):
-        """Activate the energy parameters, called during the event_activate strategy event."""
-        if self.capacity_kW is None:
-            self.capacity_kW = simulation_config.capacity_kW
-
-    def set_produced_energy_forecast(self, time_slot, slot_length, reconfigure=True):
-        """Generate the energy forecast value for the specified timeslot."""
-        difference_to_midnight_in_minutes = time_slot.diff(
-            pendulum.datetime(
-                time_slot.year, time_slot.month, time_slot.day)).in_minutes() % (60 * 24)
-        available_energy_kWh = self._gaussian_energy_forecast_kWh(
-            slot_length, difference_to_midnight_in_minutes) * self.panel_count
-        self._state.set_available_energy(available_energy_kWh, time_slot, reconfigure)
-
-    def reset(self, **kwargs):
-        """Reset / update energy parameters."""
-        if key_in_dict_and_not_none(kwargs, "panel_count"):
-            self.panel_count = kwargs["panel_count"]
-        if key_in_dict_and_not_none(kwargs, "capacity_kW"):
-            self.capacity_kW = kwargs["capacity_kW"]
-
-    def _gaussian_energy_forecast_kWh(self, slot_length, time_in_minutes=0):
-        # The sun rises at approx 6:30 and sets at 18hr
-        # time_in_minutes is the difference in time to midnight
-
-        # Clamp to day range
-        time_in_minutes %= 60 * 24
-
-        if (8 * 60) > time_in_minutes or time_in_minutes > (16.5 * 60):
-            gauss_forecast = 0
-
-        else:
-            gauss_forecast = self.capacity_kW * math.exp(
-                # time/5 is needed because we only have one data set per 5 minutes
-
-                (- (((round(time_in_minutes / 5, 0)) - 147.2)
-                    / 38.60) ** 2
-                 )
-            )
-
-        return round(convert_kW_to_kWh(gauss_forecast, slot_length), 4)
-
-    def set_energy_measurement_kWh(self, time_slot: DateTime) -> None:
-        """Set the (simulated) actual energy produced by the device in a market slot."""
-        energy_forecast_kWh = self._state.get_energy_production_forecast_kWh(time_slot)
-        simulated_measured_energy_kWh = utils.compute_altered_energy(energy_forecast_kWh)
-
-        self._state.set_energy_measurement_kWh(simulated_measured_energy_kWh, time_slot)
-
-
-class PVStrategy(BidEnabledStrategy):
+class PVStrategy(BidEnabledStrategy, UseMarketMakerMixin):
     """PV Strategy class for gaussian generation profile."""
 
     # pylint: disable=too-many-arguments
@@ -259,11 +192,7 @@ class PVStrategy(BidEnabledStrategy):
         self._future_market_strategy.update_and_populate_price_settings(self)
 
     def event_activate_price(self):
-        # If use_market_maker_rate is true, overwrite initial_selling_rate to market maker rate
-        if self.use_market_maker_rate:
-            self._area_reconfigure_prices(
-                initial_selling_rate=get_market_maker_rate_from_config(
-                    self.area.spot_market, 0) - self.owner.get_path_to_root_fees(), validate=False)
+        self._replace_rates_with_market_maker_rates()
 
         self._validate_rates(self.offer_update.initial_rate_profile_buffer,
                              self.offer_update.final_rate_profile_buffer,
@@ -292,8 +221,10 @@ class PVStrategy(BidEnabledStrategy):
         # This forecast is based on the real PV system data provided by enphase
         # They can be found in the tools folder
         # A fit of a gaussian function to those data results in a formula Energy(time)
+        if not self.area or not self.area.spot_market:
+            return
         time_slots = [self.area.spot_market.time_slot]
-        if GlobalConfig.FUTURE_MARKET_DURATION_HOURS:
+        if ConstSettings.FutureMarketSettings.FUTURE_MARKET_DURATION_HOURS:
             time_slots.extend(self.area.future_market_time_slots)
         for time_slot in time_slots:
             self._energy_params.set_produced_energy_forecast(
@@ -341,11 +272,9 @@ class PVStrategy(BidEnabledStrategy):
                 offer = market.offer(
                     offer_price,
                     offer_energy_kWh,
-                    self.owner.name,
+                    TraderDetails(self.owner.name, self.owner.uuid, self.owner.name,
+                                  self.owner.uuid),
                     original_price=offer_price,
-                    seller_origin=self.owner.name,
-                    seller_origin_id=self.owner.uuid,
-                    seller_id=self.owner.uuid,
                     time_slot=market.time_slot
                 )
                 self.offers.post(offer, market.id)
@@ -361,7 +290,7 @@ class PVStrategy(BidEnabledStrategy):
 
         self._assert_if_trade_offer_price_is_too_low(market_id, trade)
 
-        if trade.seller == self.owner.name:
+        if trade.seller.name == self.owner.name:
             self.state.decrement_available_energy(
                 trade.traded_energy, trade.time_slot, self.owner.name)
 

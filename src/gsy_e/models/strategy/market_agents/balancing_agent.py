@@ -15,14 +15,18 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+from gsy_framework.constants_limits import ConstSettings
+from gsy_framework.data_classes import TraderDetails
 from numpy.random import random
+
 from gsy_e.constants import FLOATING_POINT_TOLERANCE
 from gsy_e.models.strategy.market_agents.one_sided_agent import OneSidedAgent
 from gsy_e.models.strategy.market_agents.one_sided_engine import BalancingEngine
-from gsy_framework.constants_limits import ConstSettings
 
 
 class BalancingAgent(OneSidedAgent):
+    """Market agent for balancing market"""
+
     def __init__(self, owner, higher_market, lower_market,
                  min_offer_age=ConstSettings.MASettings.MIN_OFFER_AGE):
         self.balancing_spot_trade_ratio = owner.balancing_spot_trade_ratio
@@ -35,9 +39,9 @@ class BalancingAgent(OneSidedAgent):
 
     def _create_engines(self):
         self.engines = [
-            BalancingEngine('High -> Low', self.higher_market, self.lower_market,
+            BalancingEngine("High -> Low", self.higher_market, self.lower_market,
                             self.min_offer_age, self),
-            BalancingEngine('Low -> High', self.lower_market, self.higher_market,
+            BalancingEngine("Low -> High", self.lower_market, self.higher_market,
                             self.min_offer_age, self),
         ]
 
@@ -60,7 +64,7 @@ class BalancingAgent(OneSidedAgent):
         super().event_offer_traded(market_id=market_id, trade=trade)
 
     def event_bid_traded(self, *, market_id, bid_trade):
-        if bid_trade.already_tracked:
+        if bid_trade.match_details.get("offer"):
             return
 
         market = self.get_market_from_market_id(market_id)
@@ -71,7 +75,7 @@ class BalancingAgent(OneSidedAgent):
         super().event_bid_traded(market_id=market_id, bid_trade=bid_trade)
 
     def _calculate_and_buy_balancing_energy(self, market, trade):
-        if trade.buyer != self.owner.name or \
+        if trade.buyer.name != self.owner.name or \
                 market.time_slot != self.lower_market.time_slot:
             return
         positive_balancing_energy = \
@@ -91,8 +95,7 @@ class BalancingAgent(OneSidedAgent):
                                                       positive_balancing_energy)
                 if balance_trade is not None:
                     positive_balancing_energy -= abs(balance_trade.traded_energy)
-            elif offer.energy < FLOATING_POINT_TOLERANCE and \
-                    negative_balancing_energy > FLOATING_POINT_TOLERANCE:
+            elif offer.energy < FLOATING_POINT_TOLERANCE < negative_balancing_energy:
                 balance_trade = self._balancing_trade(offer,
                                                       -negative_balancing_energy)
                 if balance_trade is not None:
@@ -103,9 +106,12 @@ class BalancingAgent(OneSidedAgent):
 
     def _balancing_trade(self, offer, target_energy):
         trade = None
-        buyer = self.owner.name \
-            if self.owner.name != offer.seller \
-            else f"{self.owner.name} Reserve"
+        buyer = TraderDetails(
+            (self.owner.name
+             if self.owner.name != offer.seller.name
+             else f"{self.owner.name} Reserve"),
+            self.owner.uuid)
+
         if abs(offer.energy) <= abs(target_energy):
             trade = self.lower_market.accept_offer(offer_or_id=offer,
                                                    buyer=buyer,

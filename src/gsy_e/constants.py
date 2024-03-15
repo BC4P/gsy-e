@@ -18,11 +18,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # Need to import required settings from gsy-framework in order to be available in d3a,
 # thus avoiding accessing the gsy-framework constants.
 # pylint: disable=unused-import
-from gsy_framework.constants_limits import TIME_FORMAT, DATE_FORMAT, GlobalConfig # NOQA
+import os
+
 from gsy_framework.constants_limits import DATE_TIME_FORMAT, DATE_TIME_UI_FORMAT, TIME_ZONE  # NOQA
+from gsy_framework.constants_limits import TIME_FORMAT, DATE_FORMAT, GlobalConfig  # NOQA
 
-
-FLOATING_POINT_TOLERANCE = 0.00001
+# In order to cover conversion and reverse-conversion to 5 decimal points, the tolerance has to be
+# 0.00002. That way off-by-one consecutive rounding errors would not be treated as errors, e.g.
+# when recalculating the original energy rate in trade chains.
+FLOATING_POINT_TOLERANCE = 0.00002
+ROUND_TOLERANCE = 5
 
 # Percentual standard deviation relative to the forecast energy, used to compute the (simulated)
 # real energy produced/consumed by a device.
@@ -35,9 +40,9 @@ DISPATCH_EVENTS_BOTTOM_TO_TOP = True
 # Controls how often will event tick be dispatched to external connections. Defaults to
 # 20% of the slot length
 DISPATCH_EVENT_TICK_FREQUENCY_PERCENT = 10
-DISPATCH_MYCO_EVENT_TICK_FREQUENCY_PERCENT = 2
+DISPATCH_MATCHING_ENGINE_EVENT_TICK_FREQUENCY_PERCENT = 2
 
-CONFIGURATION_ID = ""
+CONFIGURATION_ID = os.environ.get("CONFIGURATION_ID", "")
 # Controls whether the external connection is for use with the redis api client
 # or with the gsy-web. Default is to connect via Redis.
 EXTERNAL_CONNECTION_WEB = False
@@ -54,7 +59,6 @@ SIMULATION_PAUSE_TIMEOUT = 600
 RETAIN_PAST_MARKET_STRATEGIES_STATE = False
 KAFKA_MOCK = False
 
-IS_CANARY_NETWORK = GlobalConfig.IS_CANARY_NETWORK
 CN_PROFILE_EXPANSION_DAYS = 7
 
 RUN_IN_REALTIME = False
@@ -64,6 +68,10 @@ SEND_EVENTS_RESPONSES_TO_SDK_VIA_RQ = False
 
 DEFAULT_SCM_COMMUNITY_NAME = "Community"
 DEFAULT_SCM_GRID_NAME = "Grid"
+
+FORWARD_MARKET_MAX_DURATION_YEARS = 6
+
+SCM_CN_DAYS_OF_DELAY = 3
 
 
 class SettlementTemplateStrategiesConstants:

@@ -111,6 +111,11 @@ Cargo.lock
 
 # iSort configuration
 .isort.cfg
+
+# Behavex output
+output/
+
+# BC4P custom
 .vscode
 .spyproject
 *.orig

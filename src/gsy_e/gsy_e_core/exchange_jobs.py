@@ -18,31 +18,25 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import logging
 from os import environ, getpid
 
+from gsy_framework.data_serializer import DataSerializer
+from gsy_framework.redis_channels import QueueNames
 from pendulum import now
 from redis import Redis
 from rq import Connection, Worker, get_current_job
 from rq.decorators import job
 
-from gsy_e.gsy_e_core.util import get_simulation_queue_name
-
 logger = logging.getLogger()
 
 
 @job("exchange")
-def start(scenario, settings, events, aggregator_device_mapping, saved_state):
+def start(payload):
     """Start a simulation with a Redis job."""
     # pylint: disable-next=import-outside-toplevel
     from gsy_e.gsy_e_core.rq_job_handler import launch_simulation_from_rq_job
     current_job = get_current_job()
     current_job.save_meta()
-    launch_simulation_from_rq_job(
-        scenario=scenario,
-        settings=settings,
-        events=events,
-        aggregator_device_mapping=aggregator_device_mapping,
-        saved_state=saved_state,
-        job_id=current_job.id
-    )
+    payload = DataSerializer.decompress_and_decode(payload)
+    launch_simulation_from_rq_job(**payload, job_id=current_job.id)
 
 
 def main():
@@ -50,7 +44,7 @@ def main():
     with Connection(
             Redis.from_url(environ.get("REDIS_URL", "redis://localhost"), retry_on_timeout=True)):
         worker = Worker(
-            [get_simulation_queue_name()],
+            [QueueNames().gsy_e_queue_name],
             name=f"simulation.{getpid()}.{now().timestamp()}", log_job_description=False
         )
         try:
