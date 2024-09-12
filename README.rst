@@ -65,7 +65,7 @@ To run the BC4P simulation use:
     gsy-e run --setup bc4p.demonstration --enable-bc
 
 
-This would start the simulation with the integrated ganache-cli and blockchain integration - which does not work yet.
+This would start the simulation with the integrated ganache-cli and blockchain integration - 
 
 One can let the simulation run in real-time by setting the slot-length-realtime to the same intervall as the slot-length `-s`.
 To allow the integration of other workers through the redis connection, one can use `--enable-external-connection`
@@ -73,6 +73,31 @@ To allow the integration of other workers through the redis connection, one can 
 .. code-block::
     
     gsy-e run --setup bc4p.demonstration -t 30s -s 15m --enable-external-connection --start-date 2022-07-01
+
+
+if you want to start it paused:
+
+.. code-block::
+
+ gsy-e run --setup bc4p.demonstration -t 30s -s 15m --enable-external-connection --start-date 2022-07-01 --paused
+
+This will allow to conveniently start the redis_connector.py so that it can listen to events happening in GSY.
+
+Remember that in order to have the redis connector working for the blockchain part, 
+you have to set up the flag in the setup configuration of the specific pilot, or the redis_connector will
+not receive events.
+
+from gsy_framework.constants_limits import ConstSettings
+
+def get_setup(config):
+
+    ConstSettings.GeneralSettings.EVENT_DISPATCHING_VIA_REDIS = True
+....
+
+see liege2.py in the setup/bc4p/ folder as an example for such a setting.
+
+
+
 
 Controlling the simulation
 --------------------------
